@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "flightly",
+    "slug": "flightly",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {},
+    "web": {},
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "flightly uses your photos to let you attach review photos to a flight.",
+          "cameraPermission": "flightly uses your camera to let you attach review photos to a flight."
+        }
+      ]
+    ]
+  }
+}
