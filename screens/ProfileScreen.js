@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Image } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Image, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -18,6 +18,7 @@ import FollowButton from '../components/FollowButton';
 import PostGrid from '../components/PostGrid';
 import { getAirlineLogoUrl, COMMON_AIRLINES } from '../utils/airlineLogo';
 import { getAircraftPhotoUrl, COMMON_AIRCRAFT } from '../utils/aircraftPhoto';
+import { BADGES } from '../utils/badges';
 
 function StatColumn({ label, value, onPress }) {
   const { colors } = useTheme();
@@ -56,7 +57,7 @@ function AircraftPickerRow({ item, onSelect }) {
   );
 }
 
-function FavoriteLogoSlot({ label, uri, editable, onPick }) {
+function FavoriteLogoSlot({ label, uri, editable, onPick, background, imageResizeMode = 'cover' }) {
   const { colors } = useTheme();
   return (
     <Pressable
@@ -68,14 +69,14 @@ function FavoriteLogoSlot({ label, uri, editable, onPick }) {
           width: 56,
           height: 56,
           borderRadius: 28,
-          backgroundColor: colors.surface,
+          backgroundColor: background || colors.surface,
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
         }}
       >
         {uri ? (
-          <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode={imageResizeMode} />
         ) : (
           <Ionicons name="add" size={20} color={colors.textMuted} />
         )}
@@ -85,7 +86,7 @@ function FavoriteLogoSlot({ label, uri, editable, onPick }) {
   );
 }
 
-export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOpenReview, onOpenPosts, onOpenFollowList, onBack }) {
+export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOpenInvite, onOpenReview, onOpenPosts, onOpenFollowList, onOpenStatList, onBack }) {
   const { colors } = useTheme();
   const targetUserId = profileUserId || user.uid;
   const isOwnProfile = targetUserId === user.uid;
@@ -99,6 +100,7 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
   const [bioDraft, setBioDraft] = useState('');
   const [editingFavorite, setEditingFavorite] = useState(null); // null | 'airline' | 'aircraft'
   const [favoriteAircraftPhoto, setFavoriteAircraftPhoto] = useState(null);
+  const [earnedBadgeKeys, setEarnedBadgeKeys] = useState([]);
 
   useEffect(() => {
     if (!firebaseReady) return;
@@ -138,6 +140,14 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
       });
       setReviews(docs);
       setStats({ flights: docs.length, airports: airports.size, airlines: airlines.size });
+    });
+    return unsubscribe;
+  }, [targetUserId]);
+
+  useEffect(() => {
+    if (!firebaseReady) return;
+    const unsubscribe = onSnapshot(collection(db, 'users', targetUserId, 'badges'), (snap) => {
+      setEarnedBadgeKeys(snap.docs.map((d) => d.id));
     });
     return unsubscribe;
   }, [targetUserId]);
@@ -213,6 +223,15 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
                   style={{ paddingVertical: 10, paddingHorizontal: 14 }}
                 >
                   <Text style={{ color: colors.textPrimary, fontSize: 13 }}>Edit bio</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setMenuOpen(false);
+                    onOpenInvite();
+                  }}
+                  style={{ paddingVertical: 10, paddingHorizontal: 14 }}
+                >
+                  <Text style={{ color: colors.textPrimary, fontSize: 13 }}>Invite friends</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -337,12 +356,35 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
           </Text>
         )}
 
+        {earnedBadgeKeys.length > 0 && (
+          <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
+            {BADGES.filter((b) => earnedBadgeKeys.includes(b.key)).map((badge) => (
+              <Pressable
+                key={badge.key}
+                onPress={() => Alert.alert(badge.title, badge.description)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: colors.accentFill,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name={badge.icon} size={16} color={colors.onAccentFill} />
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20, marginBottom: 20 }}>
           <FavoriteLogoSlot
             label="Favorite airline"
             uri={getAirlineLogoUrl(profile?.favoriteAirlineCode)}
             editable={isOwnProfile}
             onPick={() => setEditingFavorite((v) => (v === 'airline' ? null : 'airline'))}
+            background="#FFFFFF"
+            imageResizeMode="contain"
           />
           <FavoriteLogoSlot
             label="Favorite aircraft"
@@ -406,9 +448,9 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
             borderTopColor: colors.border,
           }}
         >
-          <StatColumn label="flights" value={stats.flights} />
-          <StatColumn label="airports" value={stats.airports} />
-          <StatColumn label="airlines" value={stats.airlines} />
+          <StatColumn label="flights" value={stats.flights} onPress={() => onOpenPosts(targetUserId)} />
+          <StatColumn label="airports" value={stats.airports} onPress={() => onOpenStatList(targetUserId, 'airports')} />
+          <StatColumn label="airlines" value={stats.airlines} onPress={() => onOpenStatList(targetUserId, 'airlines')} />
         </View>
 
         <PostGrid reviews={reviews} onOpenReview={onOpenReview} />

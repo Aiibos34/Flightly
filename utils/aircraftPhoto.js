@@ -30,21 +30,57 @@ function matchWikiTitle(aircraftType) {
 
 const cache = new Map();
 
+// Wikipedia's REST API throws sporadic 429s when a burst of lookups fires at
+// once (e.g. the favorite-aircraft picker mounts all ~16 rows together, each
+// requesting a photo on mount) — and testing showed a fixed inter-request
+// delay alone doesn't reliably avoid it (still 429s at 200ms and even 500ms
+// gaps), but a retry after a failure reliably succeeds. So: a small gap
+// between *distinct* lookups to avoid piling on, plus a couple of retries
+// with backoff on any single lookup that still fails.
+let queue = Promise.resolve();
+const REQUEST_GAP_MS = 250;
+const MAX_ATTEMPTS = 3;
+const RETRY_BASE_MS = 400;
+
+function enqueue(task) {
+  const run = queue.then(() => new Promise((resolve) => setTimeout(resolve, REQUEST_GAP_MS)).then(task));
+  // Swallow so one failed lookup doesn't stall the queue for everything after it.
+  queue = run.catch(() => {});
+  return run;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchThumbnail(title) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${title}`);
+      if (res.ok) {
+        const data = await res.json();
+        return data?.thumbnail?.source ?? null;
+      }
+    } catch {
+      // fall through to retry
+    }
+    if (attempt < MAX_ATTEMPTS) await wait(RETRY_BASE_MS * attempt);
+  }
+  return undefined; // undefined = every attempt failed, distinct from a confirmed "no thumbnail" null
+}
+
 export async function getAircraftPhotoUrl(aircraftType) {
   const title = matchWikiTitle(aircraftType);
   if (!title) return null;
   if (cache.has(title)) return cache.get(title);
-  try {
-    const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${title}`);
-    if (!res.ok) {
-      cache.set(title, null);
-      return null;
-    }
-    const data = await res.json();
-    const url = data?.thumbnail?.source ?? null;
-    cache.set(title, url);
-    return url;
-  } catch {
-    return null;
-  }
+
+  return enqueue(async () => {
+    if (cache.has(title)) return cache.get(title);
+    const url = await fetchThumbnail(title);
+    // Only cache a definite outcome — if every attempt failed, leave it
+    // uncached so the next mount gets a fresh chance instead of a
+    // permanently stuck "no photo".
+    if (url !== undefined) cache.set(title, url);
+    return url ?? null;
+  });
 }

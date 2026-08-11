@@ -19,6 +19,8 @@ import CommentsScreen from './screens/CommentsScreen';
 import FlightHistoryScreen from './screens/FlightHistoryScreen';
 import AccountScreen from './screens/AccountScreen';
 import FollowListScreen from './screens/FollowListScreen';
+import StatListScreen from './screens/StatListScreen';
+import InviteFriendsScreen from './screens/InviteFriendsScreen';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -94,6 +96,8 @@ function Main({ user }) {
   };
   const openPosts = (userId) => openScreen('flightHistory', { profileUserId: userId });
   const openFollowList = (userId, type) => openScreen('followList', { userId, type });
+  const openStatList = (userId, type) => openScreen('statList', { userId, type });
+  const openInvite = () => openScreen('invite');
 
   if (screen?.name === 'story') {
     return (
@@ -163,6 +167,21 @@ function Main({ user }) {
     );
   }
 
+  if (screen?.name === 'statList') {
+    return (
+      <StatListScreen
+        user={user}
+        profileUserId={screen.params.userId}
+        type={screen.params.type}
+        onBack={closeScreen}
+      />
+    );
+  }
+
+  if (screen?.name === 'invite') {
+    return <InviteFriendsScreen user={user} onBack={closeScreen} />;
+  }
+
   if (screen?.name === 'userProfile') {
     return (
       <ProfileScreen
@@ -172,6 +191,7 @@ function Main({ user }) {
         onOpenReview={openReview}
         onOpenPosts={openPosts}
         onOpenFollowList={openFollowList}
+        onOpenStatList={openStatList}
       />
     );
   }
@@ -197,9 +217,11 @@ function Main({ user }) {
           <ProfileScreen
             user={user}
             onOpenAccount={() => openScreen('account')}
+            onOpenInvite={openInvite}
             onOpenReview={openReview}
             onOpenPosts={openPosts}
             onOpenFollowList={openFollowList}
+            onOpenStatList={openStatList}
           />
         )}
       </View>

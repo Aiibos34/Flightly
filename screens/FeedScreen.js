@@ -61,14 +61,14 @@ export default function FeedScreen({ user, onOpenStory, onOpenReview, onOpenComm
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={{ paddingBottom: 4 }}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
+        style={{ height: 84 }}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 14, paddingBottom: 8 }}
       >
         {stories.map((story, i) => (
           <Pressable
             key={story.id}
             onPress={() => story.reviewId && onOpenStory(story)}
-            style={{ alignItems: 'center', gap: 4 }}
+            style={{ alignItems: 'center', gap: 4, width: 60 }}
           >
             <View
               style={{
@@ -83,7 +83,13 @@ export default function FeedScreen({ user, onOpenStory, onOpenReview, onOpenComm
             >
               <Avatar userId={story.userId} size={44} colorIndex={i} />
             </View>
-            <Text style={{ fontSize: 10, color: colors.textSecondary }}>{story.username}</Text>
+            <Text
+              style={{ fontSize: 11, color: colors.textPrimary, maxWidth: 60 }}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {story.username}
+            </Text>
           </Pressable>
         ))}
       </ScrollView>

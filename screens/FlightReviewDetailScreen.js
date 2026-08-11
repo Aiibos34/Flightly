@@ -8,6 +8,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import CategoryRatings from '../components/CategoryRatings';
 import LikeButton from '../components/LikeButton';
 import PhotoCarousel from '../components/PhotoCarousel';
+import ShareCardOverlay from '../components/ShareCardOverlay';
 import { timeAgo } from '../utils/timeAgo';
 import { getAircraftPhotoUrl } from '../utils/aircraftPhoto';
 
@@ -16,6 +17,7 @@ export default function FlightReviewDetailScreen({ reviewId, user, onBack, onOpe
   const [review, setReview] = useState(null);
   const [showAircraftPhoto, setShowAircraftPhoto] = useState(false);
   const [genericAircraftPhoto, setGenericAircraftPhoto] = useState(null);
+  const [showShareCard, setShowShareCard] = useState(false);
 
   useEffect(() => {
     if (!firebaseReady) return;
@@ -151,9 +153,15 @@ export default function FlightReviewDetailScreen({ reviewId, user, onBack, onOpe
             <Ionicons name="chatbubble-outline" size={18} color={colors.textSecondary} />
             <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{review.commentsCount}</Text>
           </Pressable>
-          <Ionicons name="share-outline" size={18} color={colors.textSecondary} />
+          <Pressable onPress={() => setShowShareCard(true)} hitSlop={8}>
+            <Ionicons name="share-outline" size={18} color={colors.textSecondary} />
+          </Pressable>
         </View>
       </ScrollView>
+
+      {showShareCard && (
+        <ShareCardOverlay variant="review" review={review} onClose={() => setShowShareCard(false)} />
+      )}
     </View>
   );
 }

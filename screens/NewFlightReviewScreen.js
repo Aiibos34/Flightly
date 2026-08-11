@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { ScrollView, View, Text, TextInput, Pressable, Switch, Image, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { collection, doc, addDoc, updateDoc, serverTimestamp } from '@firebase/firestore';
+import { collection, doc, addDoc, updateDoc, serverTimestamp, getDocs, query, where } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
 import RatingBar from '../components/RatingBar';
 import ScreenHeader from '../components/ScreenHeader';
+import ShareCardOverlay from '../components/ShareCardOverlay';
+import { syncEarnedBadges } from '../utils/badges';
 
 const PHOTO_CATEGORIES = [
   { key: 'aircraft', label: 'Aircraft' },
@@ -42,6 +44,7 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
     multimedia: editingReview?.ratings?.multimedia ?? 2.5,
   });
   const [busy, setBusy] = useState(false);
+  const [unlockedBadge, setUnlockedBadge] = useState(null);
 
   const setRating = (key, value) => setRatings((prev) => ({ ...prev, [key]: value }));
 
@@ -54,6 +57,20 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
     if (!result.canceled && result.assets?.[0]) {
       setPhotos((prev) => [...prev.filter((p) => p.category !== category), { url: result.assets[0].uri, category }]);
+    }
+  };
+
+  // Re-fetches this user's reviews (now including the one just submitted)
+  // and returns any newly-qualified badges. Swallows its own errors — a
+  // badge-check failure should never make a successfully saved review look
+  // like it failed.
+  const checkForNewBadges = async (justSubmittedFields) => {
+    try {
+      const snap = await getDocs(query(collection(db, 'reviews'), where('userId', '==', user.uid)));
+      const reviews = [...snap.docs.map((d) => d.data()), justSubmittedFields];
+      return await syncEarnedBadges(user.uid, reviews);
+    } catch {
+      return [];
     }
   };
 
@@ -87,6 +104,7 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
       };
       if (isEditing) {
         await updateDoc(doc(db, 'reviews', editingReview.id), fields);
+        onDone();
       } else {
         // Firestore queues this write in memory and sends it once back online —
         // this is what makes rating a flight mid-air with no wifi work. Durable
@@ -100,8 +118,17 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
           syncStatus: 'pending',
           createdAt: serverTimestamp(),
         });
+        const newlyEarned = await checkForNewBadges(fields);
+        if (newlyEarned.length > 0) {
+          // Show the unlock card first (only the first if several unlocked
+          // at once) — onDone() is deferred until it's closed, since it
+          // navigates away and would unmount this screen (and the overlay
+          // with it) immediately.
+          setUnlockedBadge(newlyEarned[0]);
+        } else {
+          onDone();
+        }
       }
-      onDone();
     } catch (e) {
       Alert.alert('Could not save', e.message ?? 'Something went wrong.');
     } finally {
@@ -268,6 +295,17 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
         </Text>
       </Pressable>
       </ScrollView>
+
+      {unlockedBadge && (
+        <ShareCardOverlay
+          variant="badge"
+          badge={unlockedBadge}
+          onClose={() => {
+            setUnlockedBadge(null);
+            onDone();
+          }}
+        />
+      )}
     </View>
   );
 }

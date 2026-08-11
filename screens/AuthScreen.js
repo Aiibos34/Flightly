@@ -11,12 +11,14 @@ import {
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from '@firebase/auth';
 import { auth, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
+import { applyReferralCode } from '../utils/referral';
 
 export default function AuthScreen() {
   const { colors } = useTheme();
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -29,7 +31,11 @@ export default function AuthScreen() {
     setBusy(true);
     try {
       if (mode === 'signup') {
-        await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        if (referralCode.trim()) {
+          // Non-critical — an invalid/mistyped code shouldn't block signup.
+          applyReferralCode(credential.user.uid, referralCode).catch(() => {});
+        }
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password);
       }
@@ -105,6 +111,28 @@ export default function AuthScreen() {
           value={password}
           onChangeText={setPassword}
         />
+
+        {mode === 'signup' && (
+          <TextInput
+            style={{
+              width: '100%',
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              fontSize: 16,
+              marginBottom: 12,
+              color: colors.textPrimary,
+              backgroundColor: colors.surface,
+            }}
+            placeholder="Invite code (optional)"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="characters"
+            value={referralCode}
+            onChangeText={setReferralCode}
+          />
+        )}
 
         {error && <Text style={{ color: '#E24B4A', marginBottom: 12, textAlign: 'center' }}>{error}</Text>}
 

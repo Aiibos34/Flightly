@@ -17,7 +17,8 @@
           "photosPermission": "flightly uses your photos to let you attach review photos to a flight.",
           "cameraPermission": "flightly uses your camera to let you attach review photos to a flight."
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }
