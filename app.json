@@ -18,7 +18,15 @@
           "cameraPermission": "flightly uses your camera to let you attach review photos to a flight."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-video",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "flightly uses your camera to let you add photos and videos to your story.",
+          "microphonePermission": "flightly uses your microphone to record sound for story videos."
+        }
+      ]
     ]
   }
 }

@@ -11,8 +11,18 @@ import PhotoCarousel from '../components/PhotoCarousel';
 import ShareCardOverlay from '../components/ShareCardOverlay';
 import { timeAgo } from '../utils/timeAgo';
 import { getAircraftPhotoUrl } from '../utils/aircraftPhoto';
+import { distanceBetween } from '../utils/airportInfo';
 
-export default function FlightReviewDetailScreen({ reviewId, user, onBack, onOpenComments, onOpenProfile, onEditReview }) {
+export default function FlightReviewDetailScreen({
+  reviewId,
+  user,
+  onBack,
+  onOpenComments,
+  onOpenProfile,
+  onEditReview,
+  onOpenAirport,
+  onOpenAirline,
+}) {
   const { colors } = useTheme();
   const [review, setReview] = useState(null);
   const [showAircraftPhoto, setShowAircraftPhoto] = useState(false);
@@ -50,6 +60,7 @@ export default function FlightReviewDetailScreen({ reviewId, user, onBack, onOpe
   }
 
   const aircraftPhoto = aircraftPhotoFromReview;
+  const distanceKm = distanceBetween(review.departureAirport, review.arrivalAirport);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -70,8 +81,22 @@ export default function FlightReviewDetailScreen({ reviewId, user, onBack, onOpe
             {review.username || 'pilot'}
           </Text>
         </Pressable>
+        <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 4 }}>
+          <Text onPress={() => onOpenAirline(review.airline)} style={{ textDecorationLine: 'underline' }}>
+            {review.airline}
+          </Text>
+          {review.flightNumber ? ` · ${review.flightNumber} ` : ' '}· {timeAgo(review.createdAt)}
+        </Text>
+
         <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 12 }}>
-          {review.airline} {review.flightNumber ? `· ${review.flightNumber} ` : ''}· {timeAgo(review.createdAt)}
+          <Text onPress={() => onOpenAirport(review.departureAirport)} style={{ textDecorationLine: 'underline' }}>
+            {review.departureAirport}
+          </Text>
+          {'  →  '}
+          <Text onPress={() => onOpenAirport(review.arrivalAirport)} style={{ textDecorationLine: 'underline' }}>
+            {review.arrivalAirport}
+          </Text>
+          {distanceKm ? `   ·   ${distanceKm} km` : ''}
         </Text>
 
         <PhotoCarousel photos={review.photos} />
@@ -136,12 +161,22 @@ export default function FlightReviewDetailScreen({ reviewId, user, onBack, onOpe
           freeAlcohol={review.freeAlcohol}
           hasWifi={review.hasWifi}
           wifiQuality={review.wifiQuality}
+          cabinClass={review.cabinClass}
         />
 
         {!!review.reviewText && (
           <Text style={{ color: colors.textPrimary, fontSize: 14, marginBottom: 16, lineHeight: 20 }}>
             {review.reviewText}
           </Text>
+        )}
+
+        {!!review.mealDescription && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+              Meal
+            </Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 14, lineHeight: 20 }}>{review.mealDescription}</Text>
+          </View>
         )}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, marginTop: 4 }}>

@@ -57,6 +57,15 @@ export default function ReviewCard({ review, userId, onPress, onOpenComments, on
         </Pressable>
       )}
 
+      {!!review.mealDescription && (
+        <Pressable onPress={onPress} style={{ marginTop: 6 }}>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>
+            <Text style={{ fontWeight: '500' }}>Meal: </Text>
+            {review.mealDescription}
+          </Text>
+        </Pressable>
+      )}
+
       <Pressable onPress={onPress}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 12, marginBottom: 10 }}>
           <Ionicons name="star" size={16} color={colors.accentText} />
@@ -71,6 +80,7 @@ export default function ReviewCard({ review, userId, onPress, onOpenComments, on
           freeAlcohol={review.freeAlcohol}
           hasWifi={review.hasWifi}
           wifiQuality={review.wifiQuality}
+          cabinClass={review.cabinClass}
         />
       </Pressable>
 

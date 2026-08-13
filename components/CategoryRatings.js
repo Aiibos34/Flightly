@@ -8,13 +8,14 @@ const CATEGORIES = [
   { key: 'multimedia', label: 'multimedia' },
 ];
 
-export default function CategoryRatings({ ratings, freeAlcohol, hasWifi, wifiQuality }) {
+export default function CategoryRatings({ ratings, freeAlcohol, hasWifi, wifiQuality, cabinClass }) {
   const { colors } = useTheme();
 
   const cells = [
     ...CATEGORIES.map((c) => ({ label: c.label, value: (ratings?.[c.key] ?? 0).toFixed(2) })),
     { label: 'free alcohol', value: freeAlcohol ? 'yes' : 'no' },
     { label: 'wifi', value: hasWifi ? wifiQuality || 'yes' : 'no' },
+    ...(cabinClass ? [{ label: 'class', value: cabinClass }] : []),
   ];
 
   return (

@@ -21,6 +21,12 @@ import AccountScreen from './screens/AccountScreen';
 import FollowListScreen from './screens/FollowListScreen';
 import StatListScreen from './screens/StatListScreen';
 import InviteFriendsScreen from './screens/InviteFriendsScreen';
+import AirportDetailScreen from './screens/AirportDetailScreen';
+import AirlineDetailScreen from './screens/AirlineDetailScreen';
+import UpcomingFlightsScreen from './screens/UpcomingFlightsScreen';
+import StoryComposerScreen from './screens/StoryComposerScreen';
+import ChatListScreen from './screens/ChatListScreen';
+import ChatScreen from './screens/ChatScreen';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -98,13 +104,41 @@ function Main({ user }) {
   const openFollowList = (userId, type) => openScreen('followList', { userId, type });
   const openStatList = (userId, type) => openScreen('statList', { userId, type });
   const openInvite = () => openScreen('invite');
+  const openAirportDetail = (code, profileUserId) => openScreen('airportDetail', { code, profileUserId });
+  const openAirlineDetail = (airline, profileUserId) => openScreen('airlineDetail', { airline, profileUserId });
+  const openUpcomingFlights = () => openScreen('upcomingFlights');
+  const openStoryComposer = () => openScreen('storyComposer');
+  const openChatList = () => openScreen('chatList');
+  const openChat = (chatId, otherUserId, otherUsername) => openScreen('chat', { chatId, otherUserId, otherUsername });
 
   if (screen?.name === 'story') {
     return (
       <StoryViewerScreen
-        story={screen.params.story}
+        user={user}
+        stories={screen.params.stories}
+        initialIndex={screen.params.index}
         onBack={closeScreen}
-        onOpenReview={openReview}
+        onOpenChat={openChat}
+      />
+    );
+  }
+
+  if (screen?.name === 'storyComposer') {
+    return <StoryComposerScreen user={user} onBack={closeScreen} onDone={closeScreen} />;
+  }
+
+  if (screen?.name === 'chatList') {
+    return <ChatListScreen user={user} onBack={closeScreen} onOpenChat={openChat} />;
+  }
+
+  if (screen?.name === 'chat') {
+    return (
+      <ChatScreen
+        user={user}
+        chatId={screen.params.chatId}
+        otherUserId={screen.params.otherUserId}
+        otherUsername={screen.params.otherUsername}
+        onBack={closeScreen}
       />
     );
   }
@@ -118,6 +152,8 @@ function Main({ user }) {
         onOpenComments={openComments}
         onOpenProfile={openProfile}
         onEditReview={(review) => openScreen('editReview', { review })}
+        onOpenAirport={(code) => openAirportDetail(code)}
+        onOpenAirline={(airline) => openAirlineDetail(airline)}
       />
     );
   }
@@ -168,18 +204,50 @@ function Main({ user }) {
   }
 
   if (screen?.name === 'statList') {
+    const listUserId = screen.params.userId;
     return (
       <StatListScreen
         user={user}
-        profileUserId={screen.params.userId}
+        profileUserId={listUserId}
         type={screen.params.type}
         onBack={closeScreen}
+        onOpenDetail={(type, value) =>
+          type === 'airports' ? openAirportDetail(value, listUserId) : openAirlineDetail(value, listUserId)
+        }
       />
     );
   }
 
   if (screen?.name === 'invite') {
     return <InviteFriendsScreen user={user} onBack={closeScreen} />;
+  }
+
+  if (screen?.name === 'upcomingFlights') {
+    return <UpcomingFlightsScreen user={user} onBack={closeScreen} />;
+  }
+
+  if (screen?.name === 'airportDetail') {
+    return (
+      <AirportDetailScreen
+        user={user}
+        profileUserId={screen.params.profileUserId}
+        code={screen.params.code}
+        onBack={closeScreen}
+        onOpenReview={openReview}
+      />
+    );
+  }
+
+  if (screen?.name === 'airlineDetail') {
+    return (
+      <AirlineDetailScreen
+        user={user}
+        profileUserId={screen.params.profileUserId}
+        airline={screen.params.airline}
+        onBack={closeScreen}
+        onOpenReview={openReview}
+      />
+    );
   }
 
   if (screen?.name === 'userProfile') {
@@ -202,7 +270,9 @@ function Main({ user }) {
         {tab === 'feed' && (
           <FeedScreen
             user={user}
-            onOpenStory={(story) => openScreen('story', { story })}
+            onOpenStory={(stories, index) => openScreen('story', { stories, index })}
+            onOpenStoryComposer={openStoryComposer}
+            onOpenChatList={openChatList}
             onOpenReview={openReview}
             onOpenComments={openComments}
             onOpenProfile={openProfile}
@@ -218,6 +288,7 @@ function Main({ user }) {
             user={user}
             onOpenAccount={() => openScreen('account')}
             onOpenInvite={openInvite}
+            onOpenUpcomingFlights={openUpcomingFlights}
             onOpenReview={openReview}
             onOpenPosts={openPosts}
             onOpenFollowList={openFollowList}

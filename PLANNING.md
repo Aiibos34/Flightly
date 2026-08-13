@@ -22,8 +22,17 @@ Social flight & aircraft rating app ("Untappd for flights"). Separate project fr
 **FlightReview**
 ```
 FlightReview {
-  id, userId, createdAt
-  airline, flightNumber (optional), date, departureAirport, arrivalAirport, aircraftType
+  id, userId, username, createdAt
+  airline, flightNumber (optional), date (free text, but the New Flight Review
+                   form auto-formats as it's typed: digits only, "\" inserted
+                   after DD and MM — see formatDateInput in NewFlightReviewScreen.js),
+                   departureAirport, arrivalAirport, aircraftType
+                   // airline/departureAirport/arrivalAirport/aircraftType are typed
+                   // into SearchableField — free text still wins on submit, but
+                   // suggestions autocomplete against COMMON_AIRLINES / AIRPORTS /
+                   // COMMON_AIRCRAFT as you type (components/SearchableField.js)
+  cabinClass       "economy" | "premium economy" | "business" | "first"
+                   // 4-way picker, same visual style as the wifi-quality picker
   ratings: { food, seatComfort, flightAttendants, multimedia, overall }
                    // food/seatComfort/flightAttendants/multimedia are user-entered,
                    // 0–5 in 0.25 increments, via a drag bar with tick marks at every
@@ -38,6 +47,8 @@ FlightReview {
                    // a discrete 4-option choice, not a 0–5 bar — only meaningful
                    // when hasWifi is true, null otherwise
   reviewText       (optional — labeled "Caption" in the UI, shown under the photo on the feed card, Instagram-style)
+  mealDescription  (optional free text — "What was the meal?" — powers the
+                   crowd-sourced meal lookup on Upcoming Flights, see utils/mealInfo.js)
   photos: [ { url, category: "aircraft" | "cabin" | "seat" | "food" | "alcohol" | "other" } ]
                    // tagged, multiple per category allowed — powers the photo carousel
                    // and contextual taps (e.g. tapping aircraft name shows "aircraft"-tagged photo)
@@ -45,8 +56,17 @@ FlightReview {
   syncStatus       "pending" | "synced"   // offline-first support
   verified         (boolean — future, boarding pass check)
   boardingPassPhoto (optional, future)
-  shareCardURL     (cached generated share-image, optional)
+  shareCardURL     (cached generated share-image, optional — NOT currently used;
+                   see Share Cards note below, capture is regenerated fresh each
+                   time instead since there's no Storage to cache it to)
 }
+```
+
+**UpcomingFlight** (lightweight — a flight not yet taken, separate from the
+after-the-fact FlightReview model; exists solely to attach a meal lookup to
+a booked-but-not-flown trip)
+```
+UpcomingFlight { id, userId, airline, flightNumber (optional), date, departureAirport, arrivalAirport, createdAt }
 ```
 
 **User**
@@ -82,57 +102,140 @@ users/{uid}/following/{followingUid} { userId, createdAt }
 // a maintained counter field — refetched after each follow/unfollow toggle.
 ```
 
-**Story** (lightweight, points back to a review)
+**Story** — standalone camera/gallery upload, deliberately NOT tied to a
+review (earlier draft had it point back to a FlightReview; that was scrapped
+— you can post a story any time, not just alongside a logged flight)
 ```
-Story {
-  id, userId, reviewId, mediaURL, createdAt, expiresAt (24h)
+stories/{id} {
+  userId, username, mediaURL, mediaType: "image" | "video", createdAt
 }
+// Grouped by user client-side (not deduped to "latest only") — someone
+// with 3 active (<24h) stories gets 3 progress-bar segments in the viewer,
+// tapped through in sequence before moving to the next person. See
+// FeedScreen.js's storyGroups useMemo and StoryViewerScreen.js.
+// Local-device watched-state (not synced) in AsyncStorage — utils/storyViews.js.
 ```
 
-**Badge**
+**Badge** — bundled as a local JS catalog (utils/badges.js), NOT a Firestore
+collection. Static content + Ionicons name instead of a hosted iconURL, so
+there's zero Storage cost and no seed step.
 ```
-Badge { id, key, title, description, iconURL }
-```
-
-**UserBadge**
-```
-UserBadge { userId, badgeId, earnedAt, shared (boolean) }
+// utils/badges.js: BADGES = [{ key, title, description, icon (Ionicons name) }, ...]
+// Most badges are review-stat-derived (flight count, unique airports/airlines,
+// a 5.0 rating, excellent wifi, free alcohol) and auto-evaluated by
+// syncEarnedBadges(userId, reviews) whenever reviews load. Two (recruiter,
+// welcome_aboard) are event-triggered via awardBadge(userId, key) from the
+// referral flow instead, since they're not a computable stat.
+users/{uid}/badges/{badgeKey} { userId, badgeKey, earnedAt, shared (boolean) }
 ```
 
 **Referral**
 ```
-Referral { id, referrerUserId, referredUserId, createdAt }
+referrals/{id} { referrerUserId, referredUserId, createdAt }
+// users/{uid}.referralCode — unique 6-char code (A-Z2-9, no ambiguous chars),
+// generated lazily on first visit to Invite Friends (utils/referral.js).
+// Redeeming a code at signup awards both sides a badge (recruiter / welcome_aboard).
 ```
 
-**Comment / Like** — small subcollections under each review: `{ id, reviewId, userId, text?, createdAt }`
+**Chat / Message** — direct messages. Deterministic chatId (`[uidA, uidB].sort().join('_')`)
+so two people always land in the same thread without an indexed lookup query.
+```
+chats/{chatId} {
+  participantIds: [uidA, uidB]
+  participantUsernames: { [uid]: username }
+  lastMessage, lastMessageAt, lastMessageSenderId
+  lastRead: { [uid]: timestamp }   // per-participant read receipt — powers
+                                    // both the chat-list unread red dot and
+                                    // the "Seen" label under your last message.
+                                    // MUST be written via updateDoc's dot-path
+                                    // key ({[`lastRead.${uid}`]: ...}) — a plain
+                                    // setDoc(...,{merge:true}) with a dotted
+                                    // object key does NOT nest, it creates a
+                                    // literal field named "lastRead.xyz". Bit us
+                                    // once already; utils/chats.js's markChatRead
+                                    // does this correctly, copy that, don't
+                                    // reinvent it in a script.
+}
+chats/{chatId}/messages/{id} { senderId, text, createdAt, meta? }
+// meta.storyReply + meta.storyMediaURL set when the message originated from
+// the story-reply bar (see below) — shown as "Replied to your story" in ChatScreen.
+```
+
+**Comment / Like** — small subcollections under each review:
+```
+reviews/{id}/comments/{id} { userId, username, text, createdAt }
+reviews/{id}/likes/{userId} { userId, createdAt }   // doc ID IS the liker's uid
+// likesCount/commentsCount on the review doc are denormalized counters,
+// incremented via Firestore's increment() — not recomputed live.
+```
 
 ## Screen List
-1. Auth
-2. Feed (stories bar + post feed)
-3. Story Viewer (links to full review)
-4. Flight Review Detail — ratings, photo carousel (swipeable, category-labeled), comments, likes, Share button.
-   - Tap aircraft name → shows the "aircraft"-tagged photo if the reviewer uploaded one, else a bundled generic reference photo for that aircraft model (no API needed).
-   - Tap route ("JFK–LHR") → **deferred to Phase 2+**, see below.
-   - Own posts get a pencil icon in the header → opens New Flight Review in edit mode (same screen/component, pre-filled, `updateDoc` instead of `addDoc`), so any field or photo can be retyped/replaced after posting.
-5. New Flight Review (logging form — works offline). Order: airline/flight number/date/departure/arrival/aircraft → caption → photos (aircraft/cabin/seat/food/alcohol) → free alcohol + wifi (with a 4-level quality picker when wifi is on) → rating bars (food/seat comfort/crew/multimedia) → submit, with overall computed as their average.
-6. Profile (own + others') — bio (editable on own profile), posts/followers/following row (each tappable — posts opens Flight History for that user, followers/following open Follow List), aviation stats row, follow button on other users' profiles, Instagram-grid of post thumbnails (first photo per review). Instagram link/QR code/badge showcase still not built.
-   - Favorite airline/aircraft are picked from lists (COMMON_AIRLINES / COMMON_AIRCRAFT), not free text — matches the airline picker's UX, and avoids typos that would fail to resolve a photo.
-13. Follow List (followers or following) — resolves each subcollection entry to a profile (username), tap to open that person's profile.
+
+**Phase 1:**
+1. Auth — sign-up now also has an optional "Invite code" field (see Referral above)
+2. Feed (stories bar + post feed) — top-right header has two icons: airplane (→ Chat List, with an unread red dot) and notifications bell (still decorative, unwired)
+3. Story Viewer — full rebuild, see "Stories & DMs" section below
+4. Flight Review Detail — ratings, photo carousel (swipeable, category-labeled), comments, likes, Share button (now wired, opens the Share Card overlay), meal description (if set), flight distance next to the route (computed free from bundled airport coordinates, see utils/airportInfo.js), route + airline are tappable → Airport/Airline Detail.
+   - Tap aircraft name → shows the "aircraft"-tagged photo if the reviewer uploaded one, else a live Wikipedia reference photo (see "Aircraft/airline photo gotchas" below for why this took several rounds to get working).
+   - Own posts get a pencil icon in the header → opens New Flight Review in edit mode.
+5. New Flight Review (logging form — works offline). Order: airline (searchable) → flight number → date (auto-formats DD\MM\YYYY) → departure/arrival airport (searchable) → aircraft type (searchable) → cabin class (4-way picker) → caption → meal description → photos (aircraft/cabin/seat/food/alcohol) → free alcohol + wifi (4-level quality picker) → rating bars (food/seat comfort/crew/multimedia) → submit, overall computed as their average. Posting a review that unlocks a new badge shows the Share Card overlay (badge variant) instead of a plain alert.
+6. Profile (own + others') — bio, posts/followers/following row, badge showcase row (earned badges only), favorite airline/aircraft slots, aviation stats row (flights/airports/airlines — all three now tappable, airports/airlines open Stat List → Airport/Airline Detail; flights opens Flight History), follow button, Instagram-grid of post thumbnails. ⋯ menu (own profile only): Edit bio, Invite friends, Upcoming flights, Account.
 7. Flight History
 8. Comments
 9. Search/Discover
-10. Account (Theme under a Display subsection, Flight history, Sign out in red at the bottom) — reached via the ⋯ menu on your own profile, replaces the earlier separate "Settings" screen concept
-11. Badges/Achievements
-12. Invite Friends (referral code/link, share sheet, optional contact matching)
+10. Account
+11. Badges — real grid now (3 columns, earned = filled gold, locked = outlined), not the Phase 1 placeholder
+12. Invite Friends — your code in large text, native share sheet, count of friends who joined via it
+13. Follow List
 
-**Cross-cutting flow (component, not a screen):** Share Card Generator — triggered from Flight Review Detail and badge-unlock moments. Branded image, opens native OS share sheet (covers Instagram Story automatically).
+**Added this session (not in the original Phase 1–2 plan):**
+14. Stat List — tap "airports" or "airlines" on your profile to see every one you've flown, with a flight count each
+15. Airport Detail / Airline Detail — real info (name/city/country for airports; name/country/logo for airlines, matched from free-text via `matchAirline()`) plus your flights there
+16. Upcoming Flights — log a not-yet-flown trip (airline/route/date, no ratings), tap to see crowd-sourced meal reports for that airline pulled from everyone's past reviews
+17. Story Composer — camera-first creation flow (see below), not a simple upload picker
+18. Chat List / Chat — full DM system (see below)
 
-**Later, separate piece:** public web preview page for shared links (what a non-app-user sees when they click a shared link) — build once there's real content to preview, not needed for mobile MVP.
+**Cross-cutting flow (component, not a screen):** Share Card Generator (components/ShareCard.js + ShareCardOverlay.js) — triggered from Flight Review Detail's share icon and badge-unlock moments. Fixed navy/gold branding regardless of device theme. `react-native-view-shot` captures the on-screen card, `expo-sharing` hands it to the native OS share sheet. No Storage upload — captured fresh each time from a local file.
+
+**Later, separate piece:** public web preview page for shared links — not needed for mobile MVP.
+
+## Stories & DMs (built this session — a real feature, not the Phase 1 placeholder)
+
+The original Phase 1 "story" was just a synthetic view of your most recent review from the last 24h — no upload flow, no Story documents. That's gone. Stories are now fully standalone:
+
+- **Composer** (StoryComposerScreen.js): tapping the gold **+** badge on your own story circle opens a locked-in in-app camera (`expo-camera`'s `CameraView`, not the system camera app) with a shutter button and a gallery icon to switch to picking existing media instead. Either path lands on a **preview step** (not posted yet) with a gold "Post story" bar. Supports photo *and* video.
+- **Viewer** (StoryViewerScreen.js): Instagram-style —
+  - Per-story progress segments (one per story *within that person's group*, not one per person)
+  - 3D **cube-turn transition** between stories (rotateY + perspective on both the outgoing and incoming story simultaneously, native-driven)
+  - Smooth `Animated.timing`-driven progress bar (a `setInterval` tick was the original, visibly stepped, approach — don't regress to that)
+  - Press-and-hold anywhere pauses (immediate on press-down, resumes via `keyboardDidHide`/`onPressOut`, NOT via a naive onBlur — see gotcha below); quick tap on the left/right half (true 50/50 split) navigates
+  - Swipe down to dismiss, with a real "sinking" follow-the-finger animation (`Animated.Value` + `Gesture.Pan`, not a hard cutoff)
+  - **Reply bar** at the bottom (hidden on your own story) — sends as a DM to the story owner via `utils/chats.js`'s `ensureChat`/`sendMessage`, with `meta.storyReply` for context
+- **DMs**: Chat List (unread red dot per conversation + on the feed's airplane icon) → Chat (other person's avatar top-left, read receipts — "Seen" under your last message once they've opened the thread).
+
+### Hard-won gotchas from building this (read before touching these files again)
+- **`GestureDetector`'s pan gesture can silently eat a nested `Pressable`'s `onPress`** even when the gesture never activates — symptom was `onPressIn` firing every time, `onPress` never firing. Fix: keep anything that needs reliable taps (like the reply bar) as a sibling *outside* the `GestureDetector`, not a descendant of it.
+- **Resume-on-blur races with tapping a button next to the input it's attached to.** The reply box's `onBlur` immediately unpausing the story could interrupt the Send button's own tap on Android. Fixed by resuming on `Keyboard`'s `keyboardDidHide` event instead, which only fires after the dismiss animation completes.
+- **`KeyboardAvoidingView`'s `behavior` must be set for Android too** — `undefined` (the initial code) does nothing there; use `'height'` (or `'padding'`, but `'height'` tested better here) alongside iOS's `'padding'`.
+- **Firestore: `setDoc(ref, {'a.b': val}, {merge:true})` does NOT nest** — it creates a literal field named `"a.b"`. Only `updateDoc(ref, {'a.b': val})` treats the dot as a path separator. Cost us a debugging round on the read-receipts feature.
+
+## Aircraft/airline photo gotchas (also hard-won — read before re-touching utils/aircraftPhoto.js)
+- Wikipedia's REST API (`en.wikipedia.org/api/rest_v1/page/summary/...`) **rejects requests without a descriptive `User-Agent` header** (403) — confirmed via on-device console logging, not a guess. Browsers send one automatically so this never showed up testing via a browser; React Native's `fetch` doesn't, so it must be set explicitly (see `WIKIPEDIA_HEADERS` in utils/aircraftPhoto.js).
+- **This applies separately to the image CDN too** (`upload.wikimedia.org`), not just the API host — and React Native's `<Image source={{uri, headers}}>` per-request headers option did **not** reliably work around it even when set (device logs showed the CDN still 403ing). The actual fix: download the image via our own working `fetch()` (with the header) and convert to a `data:` URI, so `<Image>` has nothing left to make its own request for. See `imageUrlToDataUri` in utils/aircraftPhoto.js.
+- A burst of ~16 simultaneous lookups (the favorite-aircraft picker mounting all rows at once) can also trip Wikipedia's rate limiting independently of the above — the queue + retry-with-backoff logic in aircraftPhoto.js is defense-in-depth for that, kept even after the real 403 cause was found and fixed.
+- If you ever add photos from a new external host for review/story content, **verify what the image actually shows before trusting a guessed filename/ID** — several blind-guessed Unsplash photo IDs during the review-seeding work turned out to be a camera, a tote bag, and a cargo ship. Unsplash's own search endpoint (`unsplash.com/napi/search/photos?query=...`) returns real `alt_description` text per result and is far more reliable than guessing IDs from memory.
 
 ## Backlog
 - (done) Add airline logos — see User.favoriteAirlineCode above.
 - (done) Add aircraft type photos — see User.favoriteAircraftType above.
 - (done) Fix bio save — explicit Cancel/Save buttons in the ⋯ → Edit bio flow.
+- (done) Badges, invite/referral, share cards, airport/airline info, meal spec, search-as-you-type, formatted date input, cabin class, Stories rebuild, full DM system — see sections above.
+
+### Open now
+- **Firestore security rules** — still on the default wide-open test-mode rule (`allow read, write: if request.time < ...`), expiring 2026-09-09. A reminder is scheduled for 2026-08-27. This is more urgent than when first flagged: real private DMs now exist and are currently readable by anyone with the Firebase config, not just review data. Needs a real per-collection ruleset before shipping, not just before the test-mode expiry.
+- **Interactive globe map** — see people you follow while they're currently mid-flight, tap for details. Large, unscoped: nothing in the app currently models a flight *while in progress* (UpcomingFlight is pre-flight, FlightReview is post-flight) — would need a new "live flight" concept with real start/end times, plus an actual 3D-globe rendering approach (not just react-native-maps, which doesn't do a globe projection).
+- **"Carmen to-do list recs"** — a separate named list of 7 UI/rating-model tweaks (caption truncation with "Read more", emoji rating labels with tap-to-reveal description, an N/A option for food/multimedia ratings, a bag-allowance rating, meal integration on Upcoming Flights, maybe dropping the crew rating, and a specific rating display order). Tracked separately from this file — ask if it needs merging in here.
+- Aircraft/review photos are stored as remote URLs directly (Unsplash for seeded test data) or local device URIs (real user uploads) — no Firebase Storage involved anywhere. Same constraint as Phase 1.5 below.
 
 ## Note on picker/overlay UI
 RN's `Modal` component didn't close reliably on a real device (confirmed, not a web-only quirk) when used for the favorite airline/aircraft pickers. Replaced with plain in-flow `View`s that expand below the trigger — the same pattern already proven to work for the ⋯ menu and bio editing. Prefer that pattern over `Modal` for future picker/overlay UI in this app.
@@ -171,12 +274,16 @@ RN's `Modal` component didn't close reliably on a real device (confirmed, not a 
 - **Phase 1.5**: offline photo upload (local caching, connectivity listener, retry queue, pending-state UI) — deferred because it's real engineering cost with no user-facing difference in the common case (nobody expects photos to post at 35,000 ft anyway; ratings while memory is fresh is the actual hook).
 
 ## Phasing
-- **Phase 1 (MVP)**: screens 1–9, core review/feed/history loop, offline ratings, tagged photo carousel, aircraft-name-tap (own photo or generic fallback).
-- **Phase 1.5**: offline photo upload.
-- **Phase 2**: badges, invite/referral, share cards, once the core loop is validated with real users.
-- **Phase 2+**: tap route → flown path with altitude/speed/other track data. Needs a *track/trajectory* data source, which is a different (often pricier) category of API than the schedule-lookup ones already planned (AviationStack/AeroDataBox/FlightAware cover flight info, not historical trajectory). **OpenSky Network** offers free historical track data via a research-oriented REST API — worth investigating first, but rate-limited. Also Phase 2+: exact tail-number aircraft photos via a spotter-photo database (JetPhotos/Planespotters-style) — real API/licensing cost, deferred.
+- **Phase 1 (MVP)**: done, verified end-to-end as of 2026-08-10.
+- **Phase 1.5**: offline photo upload — still on hold pending the Blaze plan decision, not started.
+- **Phase 2**: done as of 2026-08-13 — badges, invite/referral, share cards, plus a lot that grew out of it along the way (airport/airline info, meal spec, search-as-you-type, formatted date input, cabin class, and two features not in the original plan at all: a real Stories feature and a full DM system). See "Stories & DMs" section above for what was actually built.
+- **Phase 2+**: tap route → flown path with altitude/speed/other track data (OpenSky Network worth investigating, free but rate-limited); exact tail-number aircraft photos via a spotter-photo database (real licensing cost). Also now: the interactive globe map idea (see Backlog) probably belongs in this tier given its scope.
 
 ## Open items (not yet decided)
-- None — Phase 1 (screens 1–9, likes, photo carousel, offline ratings, real Firestore data throughout) is built and verified working end-to-end as of 2026-08-10.
-- Phase 1.5 (offline photo upload to Storage) is on hold pending the Blaze plan decision.
-- Phase 2 (badges, invite/referral, share cards) is next up when ready.
+- **Firestore security rules** — see Backlog above, this is the main outstanding decision.
+- **Interactive globe map** — needs scoping (data model + rendering approach) before any implementation starts.
+- Whether/when to revisit Phase 1.5 (offline photo upload) now that Storage would also unblock cross-device photo visibility more generally (currently every photo in the app — review, profile, story — is a local device URI or an external URL, never uploaded; a photo you post is not guaranteed to render correctly on someone else's device).
+- Carmen's 7-item rec list (see Backlog) — not started, no priority order set yet beyond the order Carmen gave them in.
+
+## Test/seed data on this Firebase project (for reference in a fresh session)
+Real account: badanjo@outlook.com (yours). Seeded fake accounts for testing (all have a real Firestore `users` doc with `photoURL`, so avatars render): `test_user_amelia` (amelia_flies), `test_user_jet` (jet_setter_joe), `test_user_runway` (runway_ruth), `test_user_dana` (captain_dana), `test_user_marcus` (marcus_flies_often), plus 10 more from the batch review-seeding pass (sophia_wanders, budget_backpacker_tom, globalgrace, quick_hopper_dave, luxurylayla, mileage_runner_priya, the_aisle_seat_guy, windowseat_wendy, redeye_robert, firstclass_faisal) — each with a full review (all 5 photo categories, verified-accurate photos, varied ratings from 1.25 to 5.00, some with comments). These aren't real Firebase Auth users, just Firestore documents — fine for display/testing, but they can't log in or receive push notifications.

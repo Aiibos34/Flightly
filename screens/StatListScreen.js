@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlatList, View, Text } from 'react-native';
+import { FlatList, View, Text, Pressable } from 'react-native';
 import { collection, query, where, onSnapshot } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
@@ -28,7 +28,7 @@ function buildItems(type, reviews) {
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
-export default function StatListScreen({ user, profileUserId, type, onBack }) {
+export default function StatListScreen({ user, profileUserId, type, onBack, onOpenDetail }) {
   const { colors } = useTheme();
   const targetUserId = profileUserId || user.uid;
   const [reviews, setReviews] = useState([]);
@@ -56,7 +56,8 @@ export default function StatListScreen({ user, profileUserId, type, onBack }) {
           data={items}
           keyExtractor={(item) => item.key}
           renderItem={({ item }) => (
-            <View
+            <Pressable
+              onPress={() => onOpenDetail(type, item.label)}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -71,7 +72,7 @@ export default function StatListScreen({ user, profileUserId, type, onBack }) {
               <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                 {item.count} flight{item.count === 1 ? '' : 's'}
               </Text>
-            </View>
+            </Pressable>
           )}
         />
       )}

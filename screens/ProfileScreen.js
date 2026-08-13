@@ -86,7 +86,7 @@ function FavoriteLogoSlot({ label, uri, editable, onPick, background, imageResiz
   );
 }
 
-export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOpenInvite, onOpenReview, onOpenPosts, onOpenFollowList, onOpenStatList, onBack }) {
+export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOpenInvite, onOpenUpcomingFlights, onOpenReview, onOpenPosts, onOpenFollowList, onOpenStatList, onBack }) {
   const { colors } = useTheme();
   const targetUserId = profileUserId || user.uid;
   const isOwnProfile = targetUserId === user.uid;
@@ -232,6 +232,15 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
                   style={{ paddingVertical: 10, paddingHorizontal: 14 }}
                 >
                   <Text style={{ color: colors.textPrimary, fontSize: 13 }}>Invite friends</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setMenuOpen(false);
+                    onOpenUpcomingFlights();
+                  }}
+                  style={{ paddingVertical: 10, paddingHorizontal: 14 }}
+                >
+                  <Text style={{ color: colors.textPrimary, fontSize: 13 }}>Upcoming flights</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {

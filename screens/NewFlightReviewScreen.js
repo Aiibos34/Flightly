@@ -8,7 +8,11 @@ import { useTheme } from '../theme';
 import RatingBar from '../components/RatingBar';
 import ScreenHeader from '../components/ScreenHeader';
 import ShareCardOverlay from '../components/ShareCardOverlay';
+import SearchableField from '../components/SearchableField';
 import { syncEarnedBadges } from '../utils/badges';
+import { COMMON_AIRLINES } from '../utils/airlineLogo';
+import { AIRPORTS } from '../utils/airportInfo';
+import { COMMON_AIRCRAFT } from '../utils/aircraftPhoto';
 
 const PHOTO_CATEGORIES = [
   { key: 'aircraft', label: 'Aircraft' },
@@ -19,8 +23,20 @@ const PHOTO_CATEGORIES = [
 ];
 
 const WIFI_LEVELS = ['unusable', 'not bad', 'good', 'excellent'];
+const CABIN_CLASSES = ['economy', 'premium economy', 'business', 'first'];
 
 const snapToQuarter = (v) => Math.round(v * 4) / 4;
+
+// Reformats from scratch on every keystroke (strip non-digits, re-insert
+// separators) rather than trying to patch the existing string — simplest
+// way to get backspacing through a separator to behave correctly for free.
+function formatDateInput(text) {
+  const digits = text.replace(/\D/g, '').slice(0, 8); // ddmmyyyy
+  let out = digits.slice(0, 2);
+  if (digits.length > 2) out += '\\' + digits.slice(2, 4);
+  if (digits.length > 4) out += '\\' + digits.slice(4, 8);
+  return out;
+}
 
 export default function NewFlightReviewScreen({ user, onDone, editingReview, onBack }) {
   const { colors } = useTheme();
@@ -28,12 +44,14 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
 
   const [photos, setPhotos] = useState(editingReview?.photos ?? []); // { url, category }
   const [reviewText, setReviewText] = useState(editingReview?.reviewText ?? '');
+  const [mealDescription, setMealDescription] = useState(editingReview?.mealDescription ?? '');
   const [airline, setAirline] = useState(editingReview?.airline ?? '');
   const [flightNumber, setFlightNumber] = useState(editingReview?.flightNumber ?? '');
   const [date, setDate] = useState(editingReview?.date ?? '');
   const [departureAirport, setDepartureAirport] = useState(editingReview?.departureAirport ?? '');
   const [arrivalAirport, setArrivalAirport] = useState(editingReview?.arrivalAirport ?? '');
   const [aircraftType, setAircraftType] = useState(editingReview?.aircraftType ?? '');
+  const [cabinClass, setCabinClass] = useState(editingReview?.cabinClass || CABIN_CLASSES[0]);
   const [freeAlcohol, setFreeAlcohol] = useState(editingReview?.freeAlcohol ?? false);
   const [hasWifi, setHasWifi] = useState(editingReview?.hasWifi ?? false);
   const [wifiQuality, setWifiQuality] = useState(editingReview?.wifiQuality || WIFI_LEVELS[2]);
@@ -95,11 +113,13 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
         departureAirport: departureAirport.toUpperCase(),
         arrivalAirport: arrivalAirport.toUpperCase(),
         aircraftType,
+        cabinClass,
         ratings: { ...ratings, overall },
         freeAlcohol,
         hasWifi,
         wifiQuality: hasWifi ? wifiQuality : null,
         reviewText,
+        mealDescription: mealDescription || null,
         photos,
       };
       if (isEditing) {
@@ -146,33 +166,108 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
         </Text>
       )}
 
-      {[
-        ['Airline', airline, setAirline],
-        ['Flight number (optional)', flightNumber, setFlightNumber],
-        ['Date', date, setDate],
-        ['Departure airport (e.g. JFK)', departureAirport, setDepartureAirport],
-        ['Arrival airport (e.g. LHR)', arrivalAirport, setArrivalAirport],
-        ['Aircraft type (e.g. Boeing 777-300ER)', aircraftType, setAircraftType],
-      ].map(([placeholder, value, setter]) => (
-        <TextInput
-          key={placeholder}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textMuted}
-          value={value}
-          onChangeText={setter}
-          style={{
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 10,
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            fontSize: 14,
-            marginBottom: 10,
-            color: colors.textPrimary,
-            backgroundColor: colors.surface,
-          }}
-        />
-      ))}
+      <SearchableField
+        placeholder="Airline"
+        value={airline}
+        onChangeText={setAirline}
+        options={COMMON_AIRLINES}
+        getLabel={(a) => a.name}
+        getSubtitle={(a) => a.code}
+      />
+
+      <TextInput
+        placeholder="Flight number (optional)"
+        placeholderTextColor={colors.textMuted}
+        value={flightNumber}
+        onChangeText={setFlightNumber}
+        style={{
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 10,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          fontSize: 14,
+          marginBottom: 10,
+          color: colors.textPrimary,
+          backgroundColor: colors.surface,
+        }}
+      />
+
+      <TextInput
+        placeholder="DD\MM\YYYY"
+        placeholderTextColor={colors.textMuted}
+        value={date}
+        onChangeText={(text) => setDate(formatDateInput(text))}
+        keyboardType="number-pad"
+        maxLength={10}
+        style={{
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 10,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          fontSize: 14,
+          marginBottom: 10,
+          color: colors.textPrimary,
+          backgroundColor: colors.surface,
+        }}
+      />
+
+      <SearchableField
+        placeholder="Departure airport (e.g. JFK)"
+        value={departureAirport}
+        onChangeText={setDepartureAirport}
+        options={AIRPORTS}
+        getLabel={(a) => a.code}
+        getSubtitle={(a) => `${a.name}, ${a.city}`}
+        getSearchText={(a) => `${a.code} ${a.name} ${a.city}`}
+      />
+
+      <SearchableField
+        placeholder="Arrival airport (e.g. LHR)"
+        value={arrivalAirport}
+        onChangeText={setArrivalAirport}
+        options={AIRPORTS}
+        getLabel={(a) => a.code}
+        getSubtitle={(a) => `${a.name}, ${a.city}`}
+        getSearchText={(a) => `${a.code} ${a.name} ${a.city}`}
+      />
+
+      <SearchableField
+        placeholder="Aircraft type (e.g. Boeing 777-300ER)"
+        value={aircraftType}
+        onChangeText={setAircraftType}
+        options={COMMON_AIRCRAFT}
+        getLabel={(a) => a.label}
+      />
+
+      <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 6 }}>Class</Text>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+        {CABIN_CLASSES.map((level) => (
+          <Pressable
+            key={level}
+            onPress={() => setCabinClass(level)}
+            style={{
+              flex: 1,
+              paddingVertical: 8,
+              borderRadius: 8,
+              alignItems: 'center',
+              backgroundColor: cabinClass === level ? colors.accentFill : colors.surface,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '500',
+                color: cabinClass === level ? colors.onAccentFill : colors.textSecondary,
+                textAlign: 'center',
+              }}
+            >
+              {level}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
       <TextInput
         placeholder="Caption"
@@ -188,6 +283,27 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
           paddingVertical: 10,
           fontSize: 14,
           minHeight: 60,
+          marginBottom: 16,
+          color: colors.textPrimary,
+          backgroundColor: colors.surface,
+          textAlignVertical: 'top',
+        }}
+      />
+
+      <TextInput
+        placeholder="What was the meal? (optional)"
+        placeholderTextColor={colors.textMuted}
+        value={mealDescription}
+        onChangeText={setMealDescription}
+        multiline
+        style={{
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 10,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          fontSize: 14,
+          minHeight: 44,
           marginBottom: 16,
           color: colors.textPrimary,
           backgroundColor: colors.surface,
