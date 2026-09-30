@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useTheme } from '../theme';
+import { useToast } from './Toast';
 
 const MIN = 0;
 const MAX = 5;
 const STEP = 0.25;
 const TICK_COUNT = Math.round((MAX - MIN) / STEP) + 1; // 21 — one per 0.25 step
 
-export default function RatingBar({ label, value, onChange }) {
+export default function RatingBar({ label, emoji, description, value, onChange, allowNA, isNA, onToggleNA }) {
   const { colors } = useTheme();
+  const toast = useToast();
   const [trackWidth, setTrackWidth] = useState(0);
 
   const clamp = (v) => Math.min(MAX, Math.max(MIN, v));
@@ -38,54 +41,78 @@ export default function RatingBar({ label, value, onChange }) {
 
   return (
     <View style={{ marginBottom: 20 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-        <Text style={{ fontSize: 14, color: colors.textPrimary }}>{label}</Text>
-        <Text style={{ fontSize: 14, fontWeight: '500', color: colors.accentText }}>
-          {clamp(value).toFixed(2)}
-        </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Pressable
+          onPress={() => toast.info(`${emoji ? emoji + ' ' : ''}${label}`, description)}
+          hitSlop={8}
+        >
+          {!!emoji && <Text style={{ fontSize: 20 }}>{emoji}</Text>}
+        </Pressable>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {allowNA && (
+            <Pressable onPress={onToggleNA} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons
+                name={isNA ? 'checkbox' : 'square-outline'}
+                size={16}
+                color={isNA ? colors.accentFill : colors.textMuted}
+              />
+              <Text style={{ fontSize: 11, color: colors.textMuted }}>N/A</Text>
+            </Pressable>
+          )}
+          <Text style={{ fontSize: 14, fontWeight: '500', color: colors.accentText, minWidth: 34, textAlign: 'right' }}>
+            {isNA ? 'N/A' : clamp(value).toFixed(2)}
+          </Text>
+        </View>
       </View>
 
-      <GestureDetector gesture={gesture}>
-        <View
-          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-          style={{ height: 32, justifyContent: 'center' }}
-        >
-          <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' }}>
-            <View style={{ height: '100%', width: `${fillPct}%`, backgroundColor: colors.accentFill }} />
-          </View>
-
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              height: 8,
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-            }}
-          >
-            {Array.from({ length: TICK_COUNT }).map((_, i) => (
-              <View key={i} style={{ width: 1, height: 8, backgroundColor: colors.background, opacity: 0.6 }} />
-            ))}
-          </View>
-
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: `${fillPct}%`,
-              marginLeft: -11,
-              width: 22,
-              height: 22,
-              borderRadius: 11,
-              backgroundColor: colors.accentFill,
-              borderWidth: 2,
-              borderColor: colors.background,
-            }}
-          />
+      {isNA ? (
+        <View style={{ height: 32, justifyContent: 'center' }}>
+          <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.border, opacity: 0.4 }} />
         </View>
-      </GestureDetector>
+      ) : (
+        <GestureDetector gesture={gesture}>
+          <View
+            onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+            style={{ height: 32, justifyContent: 'center' }}
+          >
+            <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${fillPct}%`, backgroundColor: colors.accentFill }} />
+            </View>
+
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                height: 8,
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+              }}
+            >
+              {Array.from({ length: TICK_COUNT }).map((_, i) => (
+                <View key={i} style={{ width: 1, height: 8, backgroundColor: colors.background, opacity: 0.6 }} />
+              ))}
+            </View>
+
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: `${fillPct}%`,
+                marginLeft: -11,
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: colors.accentFill,
+                borderWidth: 2,
+                borderColor: colors.background,
+              }}
+            />
+          </View>
+        </GestureDetector>
+      )}
     </View>
   );
 }

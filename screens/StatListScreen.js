@@ -4,8 +4,10 @@ import { collection, query, where, onSnapshot } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
 import ScreenHeader from '../components/ScreenHeader';
+import EmptyState from '../components/EmptyState';
 
 const TITLES = { airports: 'Airports', airlines: 'Airlines' };
+const EMPTY_ICONS = { airports: 'location-outline', airlines: 'briefcase-outline' };
 const EMPTY_MESSAGES = {
   airports: 'No airports flown to or from yet.',
   airlines: 'No airlines logged yet.',
@@ -48,9 +50,7 @@ export default function StatListScreen({ user, profileUserId, type, onBack, onOp
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader title={TITLES[type] || type} onBack={onBack} />
       {items.length === 0 ? (
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>{EMPTY_MESSAGES[type] || 'Nothing to show yet.'}</Text>
-        </View>
+        <EmptyState icon={EMPTY_ICONS[type] || 'airplane-outline'} title={EMPTY_MESSAGES[type] || 'Nothing to show yet'} />
       ) : (
         <FlatList
           data={items}

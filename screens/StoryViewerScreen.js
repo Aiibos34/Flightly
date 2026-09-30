@@ -12,12 +12,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTheme } from '../theme';
+import { useToast } from '../components/Toast';
+import { haptics } from '../utils/haptics';
 import { markStoryViewed } from '../utils/storyViews';
 import { ensureChat, sendMessage } from '../utils/chats';
 
@@ -57,6 +58,7 @@ function StoryMedia({ media, colors }) {
 // to pause, swipe down to close.
 export default function StoryViewerScreen({ stories: groups, initialIndex, onBack, user, onOpenChat }) {
   const { colors } = useTheme();
+  const toast = useToast();
   const [groupIndex, setGroupIndex] = useState(initialIndex ?? 0);
   const [slideIndex, setSlideIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -83,6 +85,7 @@ export default function StoryViewerScreen({ stories: groups, initialIndex, onBac
   // slideIndex) only commits once the animation finishes.
   const runCubeTransition = (toGroupIndex, toSlideIndex, direction) => {
     const toMedia = groups[toGroupIndex]?.stories?.[toSlideIndex];
+    haptics.select();
     setTransition({ from: media, to: toMedia, direction });
     cubeAnim.setValue(0);
     Animated.timing(cubeAnim, {
@@ -149,7 +152,7 @@ export default function StoryViewerScreen({ stories: groups, initialIndex, onBac
       setShowSentToast(true);
       setTimeout(() => setShowSentToast(false), 1800);
     } catch {
-      Alert.alert('Could not send', 'Something went wrong — try again.');
+      toast.error('Could not send', 'Something went wrong — try again.');
     } finally {
       setSendingReply(false);
     }

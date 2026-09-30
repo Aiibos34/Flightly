@@ -4,6 +4,7 @@ import { collection, doc, getDoc, onSnapshot } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
 import ScreenHeader from '../components/ScreenHeader';
+import EmptyState from '../components/EmptyState';
 
 const TITLES = { followers: 'Followers', following: 'Following' };
 
@@ -32,11 +33,10 @@ export default function FollowListScreen({ userId, type, onBack, onOpenProfile }
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader title={TITLES[type] || type} onBack={onBack} />
       {people.length === 0 ? (
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-            {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
-          </Text>
-        </View>
+        <EmptyState
+          icon="people-outline"
+          title={type === 'followers' ? 'No followers yet' : 'Not following anyone yet'}
+        />
       ) : (
         <FlatList
           data={people}

@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { FlatList, View, Text, Pressable } from 'react-native';
+import { FlatList, RefreshControl, View, Text, Pressable } from 'react-native';
 import { collection, query, where, onSnapshot } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
 import ScreenHeader from '../components/ScreenHeader';
 import Avatar from '../components/Avatar';
+import EmptyState from '../components/EmptyState';
 import { timeAgo } from '../utils/timeAgo';
 import { hasUnreadMessages } from '../utils/chats';
 
 export default function ChatListScreen({ user, onBack, onOpenChat }) {
   const { colors } = useTheme();
   const [chats, setChats] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!firebaseReady) return;
@@ -23,19 +25,29 @@ export default function ChatListScreen({ user, onBack, onOpenChat }) {
     return unsubscribe;
   }, [user.uid]);
 
+  // Chats are realtime (onSnapshot) — nothing to actually re-fetch, but the
+  // pull gesture is still expected here, so it gives brief spinner feedback.
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 500);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader title="Messages" onBack={onBack} />
       {chats.length === 0 ? (
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-            No messages yet — replying to someone's story starts a chat.
-          </Text>
-        </View>
+        <EmptyState
+          icon="chatbubble-ellipses-outline"
+          title="No messages yet"
+          subtitle="Replying to someone's story starts a chat."
+        />
       ) : (
         <FlatList
           data={chats}
           keyExtractor={(c) => c.id}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accentText} colors={[colors.accentText]} />
+          }
           renderItem={({ item }) => {
             const otherId = item.participantIds.find((id) => id !== user.uid);
             const otherUsername = item.participantUsernames?.[otherId] || 'pilot';

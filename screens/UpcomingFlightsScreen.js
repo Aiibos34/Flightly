@@ -5,6 +5,7 @@ import { collection, doc, addDoc, deleteDoc, query, where, onSnapshot, serverTim
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
 import ScreenHeader from '../components/ScreenHeader';
+import EmptyState from '../components/EmptyState';
 import { fetchMealReports } from '../utils/mealInfo';
 
 function AddUpcomingFlightForm({ user }) {
@@ -169,9 +170,11 @@ export default function UpcomingFlightsScreen({ user, onBack }) {
         keyExtractor={(f) => f.id}
         ListHeaderComponent={<AddUpcomingFlightForm user={user} />}
         ListEmptyComponent={
-          <Text style={{ color: colors.textMuted, fontSize: 13, padding: 16 }}>
-            No upcoming flights yet — add one above to see what meal others got on that airline.
-          </Text>
+          <EmptyState
+            icon="calendar-outline"
+            title="No upcoming flights yet"
+            subtitle="Add one above to see what meal others got on that airline."
+          />
         }
         renderItem={({ item }) => {
           const expanded = expandedId === item.id;

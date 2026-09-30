@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Image, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Image, RefreshControl, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -16,9 +16,13 @@ import { useTheme } from '../theme';
 import ScreenHeader from '../components/ScreenHeader';
 import FollowButton from '../components/FollowButton';
 import PostGrid from '../components/PostGrid';
+import { ProfileSkeleton } from '../components/Skeleton';
+import { useToast } from '../components/Toast';
+import { haptics } from '../utils/haptics';
 import { getAirlineLogoUrl, COMMON_AIRLINES } from '../utils/airlineLogo';
 import { getAircraftPhotoUrl, COMMON_AIRCRAFT } from '../utils/aircraftPhoto';
 import { BADGES } from '../utils/badges';
+import { uploadMedia, profilePhotoPath } from '../utils/storage';
 
 function StatColumn({ label, value, onPress }) {
   const { colors } = useTheme();
@@ -88,6 +92,7 @@ function FavoriteLogoSlot({ label, uri, editable, onPick, background, imageResiz
 
 export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOpenInvite, onOpenUpcomingFlights, onOpenReview, onOpenPosts, onOpenFollowList, onOpenStatList, onBack }) {
   const { colors } = useTheme();
+  const toast = useToast();
   const targetUserId = profileUserId || user.uid;
   const isOwnProfile = targetUserId === user.uid;
 
@@ -95,12 +100,14 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
   const [reviews, setReviews] = useState([]);
   const [stats, setStats] = useState({ flights: 0, airports: 0, airlines: 0 });
   const [followCounts, setFollowCounts] = useState({ followers: 0, following: 0 });
+  const [refreshing, setRefreshing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editingBio, setEditingBio] = useState(false);
   const [bioDraft, setBioDraft] = useState('');
   const [editingFavorite, setEditingFavorite] = useState(null); // null | 'airline' | 'aircraft'
   const [favoriteAircraftPhoto, setFavoriteAircraftPhoto] = useState(null);
   const [earnedBadgeKeys, setEarnedBadgeKeys] = useState([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     if (!firebaseReady) return;
@@ -166,6 +173,12 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetUserId]);
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadFollowCounts();
+    setRefreshing(false);
+  };
+
   const saveBio = () => {
     setEditingBio(false);
     setDoc(doc(db, 'users', user.uid), { bio: bioDraft }, { merge: true }).catch(() => {});
@@ -185,10 +198,26 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
-    if (!result.canceled && result.assets?.[0]) {
-      setDoc(doc(db, 'users', user.uid), { photoURL: result.assets[0].uri }, { merge: true }).catch(() => {});
+    if (result.canceled || !result.assets?.[0]) return;
+    setUploadingPhoto(true);
+    try {
+      const url = await uploadMedia(result.assets[0].uri, profilePhotoPath(user.uid));
+      await setDoc(doc(db, 'users', user.uid), { photoURL: url }, { merge: true });
+    } catch {
+      // best-effort — the avatar just keeps its previous photo if this fails
+    } finally {
+      setUploadingPhoto(false);
     }
   };
+
+  if (!profile && firebaseReady) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        {!isOwnProfile && <ScreenHeader title="profile" onBack={onBack} />}
+        <ProfileSkeleton />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -257,7 +286,12 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
         </View>
       )}
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: isOwnProfile ? 4 : 16 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingTop: isOwnProfile ? 4 : 16 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accentText} colors={[colors.accentText]} />
+        }
+      >
         <View style={{ alignItems: 'center', marginBottom: 14 }}>
           <View style={{ marginBottom: 10 }}>
             <View
@@ -276,6 +310,7 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
             {isOwnProfile && (
               <Pressable
                 onPress={pickProfilePhoto}
+                disabled={uploadingPhoto}
                 style={{
                   position: 'absolute',
                   bottom: -2,
@@ -290,7 +325,11 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
                   borderColor: colors.background,
                 }}
               >
-                <Ionicons name="add" size={16} color={colors.onAccentFill} />
+                {uploadingPhoto ? (
+                  <ActivityIndicator size="small" color={colors.onAccentFill} />
+                ) : (
+                  <Ionicons name="add" size={16} color={colors.onAccentFill} />
+                )}
               </Pressable>
             )}
           </View>
@@ -370,7 +409,10 @@ export default function ProfileScreen({ user, profileUserId, onOpenAccount, onOp
             {BADGES.filter((b) => earnedBadgeKeys.includes(b.key)).map((badge) => (
               <Pressable
                 key={badge.key}
-                onPress={() => Alert.alert(badge.title, badge.description)}
+                onPress={() => {
+                  haptics.select();
+                  toast.info(badge.title, badge.description);
+                }}
                 style={{
                   width: 34,
                   height: 34,

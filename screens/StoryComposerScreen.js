@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
-import { View, Text, Pressable, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTheme } from '../theme';
+import { useToast } from '../components/Toast';
+import { haptics } from '../utils/haptics';
 import { createStory } from '../utils/stories';
 
 function PreviewVideo({ uri }) {
@@ -22,6 +24,7 @@ function PreviewVideo({ uri }) {
 // media instead. Either path lands on a preview step before anything posts.
 export default function StoryComposerScreen({ user, onBack, onDone }) {
   const { colors } = useTheme();
+  const toast = useToast();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState('back');
   const [captured, setCaptured] = useState(null); // { uri, mediaType }
@@ -30,6 +33,7 @@ export default function StoryComposerScreen({ user, onBack, onDone }) {
 
   const takePhoto = async () => {
     if (!cameraRef.current) return;
+    haptics.tap();
     const photo = await cameraRef.current.takePictureAsync();
     setCaptured({ uri: photo.uri, mediaType: 'image' });
   };
@@ -37,7 +41,7 @@ export default function StoryComposerScreen({ user, onBack, onDone }) {
   const pickFromGallery = async () => {
     const galleryPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!galleryPermission.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to add to your story.');
+      toast.info('Permission needed', 'Allow photo access to add to your story.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.7 });
@@ -52,9 +56,10 @@ export default function StoryComposerScreen({ user, onBack, onDone }) {
     setPosting(true);
     try {
       await createStory(user.uid, user.email ? user.email.split('@')[0] : 'pilot', captured.uri, captured.mediaType);
+      haptics.success();
       onDone();
     } catch {
-      Alert.alert('Could not post story', 'Something went wrong — try again.');
+      toast.error('Could not post story', 'Something went wrong — try again.');
     } finally {
       setPosting(false);
     }

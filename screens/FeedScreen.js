@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, View, Text } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, orderBy, onSnapshot } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
 import ReviewCard from '../components/ReviewCard';
 import Avatar from '../components/Avatar';
+import EmptyState from '../components/EmptyState';
+import { FeedSkeleton } from '../components/Skeleton';
 import { getViewedStoryIds } from '../utils/storyViews';
 import { hasUnreadMessages } from '../utils/chats';
 
@@ -16,6 +18,8 @@ const AVATAR_SIZE = 58;
 export default function FeedScreen({ user, onOpenStory, onOpenStoryComposer, onOpenChatList, onOpenReview, onOpenComments, onOpenProfile }) {
   const { colors } = useTheme();
   const [reviews, setReviews] = useState([]);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [storyDocs, setStoryDocs] = useState([]);
   const [viewedIds, setViewedIds] = useState(new Set());
   const [chats, setChats] = useState([]);
@@ -25,9 +29,18 @@ export default function FeedScreen({ user, onOpenStory, onOpenStoryComposer, onO
     const q = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snap) => {
       setReviews(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setLoadingReviews(false);
     });
     return unsubscribe;
   }, []);
+
+  // Reviews/stories/chats are all realtime (onSnapshot), so there's nothing
+  // to re-fetch — the pull gesture is still expected UX, so it plays the
+  // spinner briefly for feedback rather than doing nothing visibly.
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 500);
+  };
 
   useEffect(() => {
     if (!firebaseReady) return;
@@ -186,16 +199,21 @@ export default function FeedScreen({ user, onOpenStory, onOpenStoryComposer, onO
             Firebase isn't configured yet — add your config to .env to see the feed.
           </Text>
         </View>
+      ) : loadingReviews ? (
+        <FeedSkeleton />
       ) : reviews.length === 0 ? (
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-            No flights logged yet — be the first to post one.
-          </Text>
-        </View>
+        <EmptyState
+          icon="airplane-outline"
+          title="No flights logged yet"
+          subtitle="Be the first to post a flight review."
+        />
       ) : (
         <FlatList
           data={reviews}
           keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accentText} colors={[colors.accentText]} />
+          }
           renderItem={({ item }) => (
             <ReviewCard
               review={item}

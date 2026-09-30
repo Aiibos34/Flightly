@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { collection, onSnapshot } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
+import EmptyState from '../components/EmptyState';
 import { timeAgo } from '../utils/timeAgo';
 
 export default function SearchScreen({ onOpenReview }) {
@@ -59,13 +60,9 @@ export default function SearchScreen({ onOpenReview }) {
       </View>
 
       {!needle ? (
-        <Text style={{ color: colors.textMuted, fontSize: 13, paddingHorizontal: 16 }}>
-          Start typing to search across pilots, airlines, and airports.
-        </Text>
+        <EmptyState icon="search-outline" title="Search Flightly" subtitle="Find pilots, airlines, and airports." />
       ) : results.length === 0 ? (
-        <Text style={{ color: colors.textMuted, fontSize: 13, paddingHorizontal: 16 }}>
-          No matches for "{searchText}".
-        </Text>
+        <EmptyState icon="search-outline" title="No matches" subtitle={`Nothing found for "${searchText}".`} />
       ) : (
         <FlatList
           data={results}

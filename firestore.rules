@@ -1,0 +1,167 @@
+rules_version = '2';
+
+// Flightly production rules. Replaces the default wide-open test-mode rule
+// (`allow read, write: if request.time < ...`), which was expiring
+// 2026-09-09 and — more urgently — left real private DMs (chats/messages)
+// readable by anyone with the Firebase config, not just review data.
+//
+// Written against the exact read/write calls the client actually makes (see
+// PLANNING.md's Data Model section and utils/*.js) rather than an idealized
+// schema, so legitimate app behavior — cross-user like/comment counters,
+// the cross-user "recruiter" badge award on referral — keeps working.
+//
+// Known accepted gap (not fixed here — a data-model change, not a rules
+// change): users/{uid} contains `email`, and the whole doc must be readable
+// by any signed-in user so profiles/usernames/bios are visible to others.
+// Firestore rules can't restrict individual fields within one document, so
+// email is technically fetchable by any signed-in user via a direct SDK/REST
+// call even though the UI never displays it for anyone but yourself. Fixing
+// this properly means moving email into a private doc/field split — a
+// follow-up, not part of this pass.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ---------------- users ----------------
+    match /users/{userId} {
+      // Profiles (username, bio, favorites, stats-source reviews) are
+      // visible to any signed-in user — this is a social feed, not a
+      // private address book. See the email caveat above.
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(userId);
+      allow delete: if false;
+
+      // followers/{followerId}: doc ID is the *follower's* uid. Written by
+      // the follower onto the target's subcollection (FollowButton.js), not
+      // by the profile owner — so ownership check is on the doc ID, not the
+      // parent path.
+      match /followers/{followerId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(followerId);
+        allow update: if false;
+      }
+
+      // following/{followingId}: doc ID is who *userId* follows. Written by
+      // userId themself, so ownership check is on the parent path here.
+      match /following/{followingId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(userId);
+        allow update: if false;
+      }
+
+      // badges/{badgeKey}: usually self-awarded from client-computed stats
+      // (syncEarnedBadges), but the "recruiter" badge is written onto the
+      // *referrer's* subcollection by the person who just redeemed their
+      // code (utils/referral.js's applyReferralCode) — a legitimate
+      // cross-user write with no server-side function to broker it. Shape
+      // is constrained (must match the path's uid/badgeKey); which exact
+      // user triggers the write is not, since badges are cosmetic,
+      // client-computed gamification already trusted at this level for the
+      // other 8 stat-based badges too — not worth a data-model change to
+      // lock down further.
+      match /badges/{badgeKey} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn()
+          && request.resource.data.userId == userId
+          && request.resource.data.badgeKey == badgeKey;
+        allow delete: if false;
+      }
+    }
+
+    // ---------------- reviews ----------------
+    match /reviews/{reviewId} {
+      // Feed/search/meal-lookup all list the full collection unfiltered —
+      // this is the public flight-review feed.
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // Two legitimate update shapes: the owner editing their own review
+      // (any fields), or *any* signed-in user bumping likesCount/
+      // commentsCount via increment() from the like button / comment post —
+      // constrained with hasOnly so a like-toggle request can't smuggle in
+      // changes to other fields.
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount']) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentsCount'])
+      );
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // likes/{likerId}: doc ID IS the liker's uid (see PLANNING.md).
+      match /likes/{likerId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(likerId);
+        allow update: if false;
+      }
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------------- stories ----------------
+    match /stories/{storyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ---------------- upcomingFlights ----------------
+    // Private — not shown to anyone but the owner (unlike reviews).
+    match /upcomingFlights/{flightId} {
+      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // ---------------- referrals ----------------
+    match /referrals/{referralId} {
+      allow read: if isSignedIn() && (
+        resource.data.referrerUserId == request.auth.uid ||
+        resource.data.referredUserId == request.auth.uid
+      );
+      // Written right after signup, by the newly-created (and now signed
+      // in) account redeeming a code — see AuthScreen.js/referral.js.
+      allow create: if isSignedIn() && request.resource.data.referredUserId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ---------------- chats & messages (DMs) ----------------
+    // The most urgent piece of this pass — previously wide open to anyone
+    // with the Firebase config, not just app users.
+    match /chats/{chatId} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.participantIds;
+      allow create: if isSignedIn() && request.auth.uid in request.resource.data.participantIds;
+      // Only lastMessage/lastMessageAt/lastMessageSenderId/lastRead are
+      // ever touched post-creation (utils/chats.js) — hasOnly stops a
+      // participant from rewriting participantIds to hijack or lock the
+      // other person out of the thread.
+      allow update: if isSignedIn() && request.auth.uid in resource.data.participantIds
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['lastMessage', 'lastMessageAt', 'lastMessageSenderId', 'lastRead']);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        // Membership is checked against the parent chat doc (messages
+        // don't carry participantIds themselves) — costs one extra read
+        // per request, negligible at this app's scale.
+        allow read: if isSignedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds;
+        allow create: if isSignedIn()
+          && request.resource.data.senderId == request.auth.uid
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantIds;
+        allow update, delete: if false;
+      }
+    }
+
+    // Everything else: denied by default (Firestore's implicit behavior for
+    // any path with no matching rule above).
+  }
+}

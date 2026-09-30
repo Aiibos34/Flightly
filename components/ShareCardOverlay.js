@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Pressable, Text, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from '../theme';
+import { haptics } from '../utils/haptics';
 import ShareCard from './ShareCard';
 
 // Full-screen absolute-positioned overlay rather than RN's Modal — Modal was
@@ -13,6 +14,11 @@ export default function ShareCardOverlay({ variant, review, badge, onClose }) {
   const { colors } = useTheme();
   const shotRef = useRef(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (variant === 'badge') haptics.success();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const share = async () => {
     setBusy(true);

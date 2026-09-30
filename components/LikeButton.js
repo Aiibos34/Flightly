@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, onSnapshot, setDoc, deleteDoc, updateDoc, increment, serverTimestamp } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
+import { haptics } from '../utils/haptics';
 
 export default function LikeButton({ reviewId, userId, likesCount }) {
   const { colors } = useTheme();
@@ -23,6 +24,7 @@ export default function LikeButton({ reviewId, userId, likesCount }) {
     setBusy(true);
     const likeRef = doc(db, 'reviews', reviewId, 'likes', userId);
     const reviewRef = doc(db, 'reviews', reviewId);
+    haptics.tap();
     try {
       if (liked) {
         await deleteDoc(likeRef);

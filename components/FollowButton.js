@@ -3,6 +3,7 @@ import { Pressable, Text } from 'react-native';
 import { doc, onSnapshot, setDoc, deleteDoc, serverTimestamp } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
+import { haptics } from '../utils/haptics';
 
 export default function FollowButton({ currentUserId, targetUserId, onChange }) {
   const { colors } = useTheme();
@@ -22,6 +23,7 @@ export default function FollowButton({ currentUserId, targetUserId, onChange }) 
   const toggle = async () => {
     if (busy) return;
     setBusy(true);
+    haptics.tap();
     try {
       if (following) {
         await deleteDoc(doc(db, 'users', targetUserId, 'followers', currentUserId));

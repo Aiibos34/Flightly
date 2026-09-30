@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
-import { View, Text, FlatList, Pressable, Alert } from 'react-native';
+import { View, Text, FlatList, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, onSnapshot } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
+import { useToast } from '../components/Toast';
+import { haptics } from '../utils/haptics';
 import { BADGES, syncEarnedBadges } from '../utils/badges';
 
 export default function BadgesScreen({ user }) {
   const { colors } = useTheme();
+  const toast = useToast();
   const [earnedKeys, setEarnedKeys] = useState(new Set());
 
   useEffect(() => {
@@ -47,7 +50,10 @@ export default function BadgesScreen({ user }) {
           const earned = earnedKeys.has(item.key);
           return (
             <Pressable
-              onPress={() => Alert.alert(item.title, item.description)}
+              onPress={() => {
+                haptics.select();
+                toast.info(item.title, item.description);
+              }}
               style={{ width: '33.33%', padding: 8, alignItems: 'center' }}
             >
               <View

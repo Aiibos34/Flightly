@@ -1,19 +1,17 @@
 import { collection, addDoc, serverTimestamp } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
+import { uploadMedia, storyMediaPath } from './storage';
 
-// Standalone story upload — not tied to a flight review. Media is stored as
-// the local device URI directly, same as every other photo in this app
-// (review photos, profile photo) — there's no Firebase Storage upload step
-// anywhere yet, since Storage is on hold pending the Blaze plan decision
-// (see PLANNING.md). That means, like those other photos, a story is only
-// guaranteed to render correctly on the device that uploaded it until
-// Storage is wired up.
+// Standalone story upload — not tied to a flight review. Media is uploaded
+// to Firebase Storage (see utils/storage.js) so it renders on other users'
+// devices, not just the one that captured it.
 export async function createStory(userId, username, mediaUri, mediaType) {
   if (!firebaseReady) return;
+  const mediaURL = await uploadMedia(mediaUri, storyMediaPath(userId, mediaType));
   await addDoc(collection(db, 'stories'), {
     userId,
     username,
-    mediaURL: mediaUri,
+    mediaURL,
     mediaType, // 'image' | 'video'
     createdAt: serverTimestamp(),
   });

@@ -99,7 +99,7 @@ export default function FlightReviewDetailScreen({
           {distanceKm ? `   ·   ${distanceKm} km` : ''}
         </Text>
 
-        <PhotoCarousel photos={review.photos} />
+        <PhotoCarousel photos={review.photos} reviewId={review.id} userId={user.uid} />
 
         <Pressable onPress={() => setShowAircraftPhoto((v) => !v)} style={{ marginBottom: 12 }}>
           <Text style={{ color: colors.accentText, fontSize: 14, textDecorationLine: 'underline' }}>

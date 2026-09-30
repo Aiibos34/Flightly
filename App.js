@@ -6,6 +6,8 @@ import { onAuthStateChanged } from '@firebase/auth';
 import { doc, setDoc } from '@firebase/firestore';
 import { auth, db, firebaseReady } from './firebase';
 import { ThemeProvider, useTheme } from './theme';
+import { ToastProvider } from './components/Toast';
+import ScreenTransition from './components/ScreenTransition';
 import BottomNav from './components/BottomNav';
 import AuthScreen from './screens/AuthScreen';
 import FeedScreen from './screens/FeedScreen';
@@ -62,7 +64,9 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
-        <Root checkingAuth={checkingAuth} user={user} />
+        <ToastProvider>
+          <Root checkingAuth={checkingAuth} user={user} />
+        </ToastProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );
@@ -111,8 +115,11 @@ function Main({ user }) {
   const openChatList = () => openScreen('chatList');
   const openChat = (chatId, otherUserId, otherUsername) => openScreen('chat', { chatId, otherUserId, otherUsername });
 
+  let content;
+  let transitionKey = screen?.name || tab;
+
   if (screen?.name === 'story') {
-    return (
+    content = (
       <StoryViewerScreen
         user={user}
         stories={screen.params.stories}
@@ -121,18 +128,12 @@ function Main({ user }) {
         onOpenChat={openChat}
       />
     );
-  }
-
-  if (screen?.name === 'storyComposer') {
-    return <StoryComposerScreen user={user} onBack={closeScreen} onDone={closeScreen} />;
-  }
-
-  if (screen?.name === 'chatList') {
-    return <ChatListScreen user={user} onBack={closeScreen} onOpenChat={openChat} />;
-  }
-
-  if (screen?.name === 'chat') {
-    return (
+  } else if (screen?.name === 'storyComposer') {
+    content = <StoryComposerScreen user={user} onBack={closeScreen} onDone={closeScreen} />;
+  } else if (screen?.name === 'chatList') {
+    content = <ChatListScreen user={user} onBack={closeScreen} onOpenChat={openChat} />;
+  } else if (screen?.name === 'chat') {
+    content = (
       <ChatScreen
         user={user}
         chatId={screen.params.chatId}
@@ -141,10 +142,8 @@ function Main({ user }) {
         onBack={closeScreen}
       />
     );
-  }
-
-  if (screen?.name === 'reviewDetail') {
-    return (
+  } else if (screen?.name === 'reviewDetail') {
+    content = (
       <FlightReviewDetailScreen
         reviewId={screen.params.reviewId}
         user={user}
@@ -156,10 +155,8 @@ function Main({ user }) {
         onOpenAirline={(airline) => openAirlineDetail(airline)}
       />
     );
-  }
-
-  if (screen?.name === 'editReview') {
-    return (
+  } else if (screen?.name === 'editReview') {
+    content = (
       <NewFlightReviewScreen
         user={user}
         editingReview={screen.params.review}
@@ -167,16 +164,12 @@ function Main({ user }) {
         onDone={closeScreen}
       />
     );
-  }
-
-  if (screen?.name === 'comments') {
-    return (
+  } else if (screen?.name === 'comments') {
+    content = (
       <CommentsScreen reviewId={screen.params.reviewId} user={user} onBack={closeScreen} onOpenProfile={openProfile} />
     );
-  }
-
-  if (screen?.name === 'flightHistory') {
-    return (
+  } else if (screen?.name === 'flightHistory') {
+    content = (
       <FlightHistoryScreen
         user={user}
         profileUserId={screen.params?.profileUserId}
@@ -184,16 +177,10 @@ function Main({ user }) {
         onOpenReview={openReview}
       />
     );
-  }
-
-  if (screen?.name === 'account') {
-    return (
-      <AccountScreen onBack={closeScreen} onOpenHistory={() => openScreen('flightHistory')} />
-    );
-  }
-
-  if (screen?.name === 'followList') {
-    return (
+  } else if (screen?.name === 'account') {
+    content = <AccountScreen onBack={closeScreen} onOpenHistory={() => openScreen('flightHistory')} />;
+  } else if (screen?.name === 'followList') {
+    content = (
       <FollowListScreen
         userId={screen.params.userId}
         type={screen.params.type}
@@ -201,11 +188,9 @@ function Main({ user }) {
         onOpenProfile={openProfile}
       />
     );
-  }
-
-  if (screen?.name === 'statList') {
+  } else if (screen?.name === 'statList') {
     const listUserId = screen.params.userId;
-    return (
+    content = (
       <StatListScreen
         user={user}
         profileUserId={listUserId}
@@ -216,18 +201,12 @@ function Main({ user }) {
         }
       />
     );
-  }
-
-  if (screen?.name === 'invite') {
-    return <InviteFriendsScreen user={user} onBack={closeScreen} />;
-  }
-
-  if (screen?.name === 'upcomingFlights') {
-    return <UpcomingFlightsScreen user={user} onBack={closeScreen} />;
-  }
-
-  if (screen?.name === 'airportDetail') {
-    return (
+  } else if (screen?.name === 'invite') {
+    content = <InviteFriendsScreen user={user} onBack={closeScreen} />;
+  } else if (screen?.name === 'upcomingFlights') {
+    content = <UpcomingFlightsScreen user={user} onBack={closeScreen} />;
+  } else if (screen?.name === 'airportDetail') {
+    content = (
       <AirportDetailScreen
         user={user}
         profileUserId={screen.params.profileUserId}
@@ -236,10 +215,8 @@ function Main({ user }) {
         onOpenReview={openReview}
       />
     );
-  }
-
-  if (screen?.name === 'airlineDetail') {
-    return (
+  } else if (screen?.name === 'airlineDetail') {
+    content = (
       <AirlineDetailScreen
         user={user}
         profileUserId={screen.params.profileUserId}
@@ -248,10 +225,8 @@ function Main({ user }) {
         onOpenReview={openReview}
       />
     );
-  }
-
-  if (screen?.name === 'userProfile') {
-    return (
+  } else if (screen?.name === 'userProfile') {
+    content = (
       <ProfileScreen
         user={user}
         profileUserId={screen.params.userId}
@@ -262,41 +237,43 @@ function Main({ user }) {
         onOpenStatList={openStatList}
       />
     );
+  } else {
+    content = (
+      <View style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
+          {tab === 'feed' && (
+            <FeedScreen
+              user={user}
+              onOpenStory={(stories, index) => openScreen('story', { stories, index })}
+              onOpenStoryComposer={openStoryComposer}
+              onOpenChatList={openChatList}
+              onOpenReview={openReview}
+              onOpenComments={openComments}
+              onOpenProfile={openProfile}
+            />
+          )}
+          {tab === 'search' && <SearchScreen onOpenReview={openReview} />}
+          {tab === 'newReview' && (
+            <NewFlightReviewScreen user={user} onDone={() => setTab('feed')} />
+          )}
+          {tab === 'badges' && <BadgesScreen user={user} />}
+          {tab === 'profile' && (
+            <ProfileScreen
+              user={user}
+              onOpenAccount={() => openScreen('account')}
+              onOpenInvite={openInvite}
+              onOpenUpcomingFlights={openUpcomingFlights}
+              onOpenReview={openReview}
+              onOpenPosts={openPosts}
+              onOpenFollowList={openFollowList}
+              onOpenStatList={openStatList}
+            />
+          )}
+        </View>
+        <BottomNav active={tab} onChange={setTab} />
+      </View>
+    );
   }
 
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={{ flex: 1 }}>
-        {tab === 'feed' && (
-          <FeedScreen
-            user={user}
-            onOpenStory={(stories, index) => openScreen('story', { stories, index })}
-            onOpenStoryComposer={openStoryComposer}
-            onOpenChatList={openChatList}
-            onOpenReview={openReview}
-            onOpenComments={openComments}
-            onOpenProfile={openProfile}
-          />
-        )}
-        {tab === 'search' && <SearchScreen onOpenReview={openReview} />}
-        {tab === 'newReview' && (
-          <NewFlightReviewScreen user={user} onDone={() => setTab('feed')} />
-        )}
-        {tab === 'badges' && <BadgesScreen user={user} />}
-        {tab === 'profile' && (
-          <ProfileScreen
-            user={user}
-            onOpenAccount={() => openScreen('account')}
-            onOpenInvite={openInvite}
-            onOpenUpcomingFlights={openUpcomingFlights}
-            onOpenReview={openReview}
-            onOpenPosts={openPosts}
-            onOpenFollowList={openFollowList}
-            onOpenStatList={openStatList}
-          />
-        )}
-      </View>
-      <BottomNav active={tab} onChange={setTab} />
-    </View>
-  );
+  return <ScreenTransition key={transitionKey}>{content}</ScreenTransition>;
 }

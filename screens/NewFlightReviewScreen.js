@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, Switch, Image, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, Switch, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { collection, doc, addDoc, updateDoc, serverTimestamp, getDocs, query, where } from '@firebase/firestore';
@@ -9,10 +9,14 @@ import RatingBar from '../components/RatingBar';
 import ScreenHeader from '../components/ScreenHeader';
 import ShareCardOverlay from '../components/ShareCardOverlay';
 import SearchableField from '../components/SearchableField';
+import { useToast } from '../components/Toast';
+import { haptics } from '../utils/haptics';
 import { syncEarnedBadges } from '../utils/badges';
 import { COMMON_AIRLINES } from '../utils/airlineLogo';
 import { AIRPORTS } from '../utils/airportInfo';
 import { COMMON_AIRCRAFT } from '../utils/aircraftPhoto';
+import { RATING_CATEGORIES, BAG_ALLOWANCE, BAG_ALLOWANCE_LEVELS, computeOverall } from '../utils/ratingMeta';
+import { uploadMedia, isLocalUri, reviewPhotoPath } from '../utils/storage';
 
 const PHOTO_CATEGORIES = [
   { key: 'aircraft', label: 'Aircraft' },
@@ -24,8 +28,6 @@ const PHOTO_CATEGORIES = [
 
 const WIFI_LEVELS = ['unusable', 'not bad', 'good', 'excellent'];
 const CABIN_CLASSES = ['economy', 'premium economy', 'business', 'first'];
-
-const snapToQuarter = (v) => Math.round(v * 4) / 4;
 
 // Reformats from scratch on every keystroke (strip non-digits, re-insert
 // separators) rather than trying to patch the existing string — simplest
@@ -40,6 +42,7 @@ function formatDateInput(text) {
 
 export default function NewFlightReviewScreen({ user, onDone, editingReview, onBack }) {
   const { colors } = useTheme();
+  const toast = useToast();
   const isEditing = !!editingReview;
 
   const [photos, setPhotos] = useState(editingReview?.photos ?? []); // { url, category }
@@ -61,15 +64,31 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
     flightAttendants: editingReview?.ratings?.flightAttendants ?? 2.5,
     multimedia: editingReview?.ratings?.multimedia ?? 2.5,
   });
+  // Bag allowance is a discrete pick (BAG_ALLOWANCE_LEVELS), not a 0-5 drag
+  // value, so it's tracked separately from `ratings` above.
+  const [bagAllowance, setBagAllowance] = useState(
+    typeof editingReview?.ratings?.bagAllowance === 'string'
+      ? editingReview.ratings.bagAllowance
+      : BAG_ALLOWANCE_LEVELS[2]
+  );
+  // N/A only applies when editing a review that was actually saved that way
+  // (or predates a category entirely, hence `== null`) — a brand new review
+  // always starts everything rated, same as before this feature.
+  const [naFlags, setNaFlags] = useState({
+    food: isEditing && editingReview?.ratings?.food == null,
+    multimedia: isEditing && editingReview?.ratings?.multimedia == null,
+    bagAllowance: isEditing && editingReview?.ratings?.bagAllowance == null,
+  });
   const [busy, setBusy] = useState(false);
   const [unlockedBadge, setUnlockedBadge] = useState(null);
 
   const setRating = (key, value) => setRatings((prev) => ({ ...prev, [key]: value }));
+  const toggleNA = (key) => setNaFlags((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const pickPhoto = async (category) => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo access to attach a review photo.');
+      toast.info('Permission needed', 'Allow photo access to attach a review photo.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
@@ -94,18 +113,32 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
 
   const submit = async () => {
     if (!departureAirport || !arrivalAirport || !airline) {
-      Alert.alert('Missing info', 'Add at least the airline and route before submitting.');
+      toast.error('Missing info', 'Add at least the airline and route before submitting.');
       return;
     }
     if (!firebaseReady) {
-      Alert.alert('Firebase not configured', 'Add your Firebase config to .env to save reviews.');
+      toast.error('Firebase not configured', 'Add your Firebase config to .env to save reviews.');
       return;
     }
     setBusy(true);
     try {
-      const overall = snapToQuarter(
-        (ratings.food + ratings.seatComfort + ratings.flightAttendants + ratings.multimedia) / 4
+      // Photos already at a real URL (editing an existing review, or a
+      // seeded external URL) are left alone — only freshly-picked local
+      // device URIs get uploaded.
+      const uploadedPhotos = await Promise.all(
+        photos.map(async (photo) =>
+          isLocalUri(photo.url)
+            ? { ...photo, url: await uploadMedia(photo.url, reviewPhotoPath(user.uid, photo.category)) }
+            : photo
+        )
       );
+      const finalRatings = {
+        ...ratings,
+        food: naFlags.food ? null : ratings.food,
+        multimedia: naFlags.multimedia ? null : ratings.multimedia,
+        bagAllowance: naFlags.bagAllowance ? null : bagAllowance,
+      };
+      const overall = computeOverall(finalRatings);
       const fields = {
         airline,
         flightNumber: flightNumber || null,
@@ -114,16 +147,17 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
         arrivalAirport: arrivalAirport.toUpperCase(),
         aircraftType,
         cabinClass,
-        ratings: { ...ratings, overall },
+        ratings: { ...finalRatings, overall },
         freeAlcohol,
         hasWifi,
         wifiQuality: hasWifi ? wifiQuality : null,
         reviewText,
         mealDescription: mealDescription || null,
-        photos,
+        photos: uploadedPhotos,
       };
       if (isEditing) {
         await updateDoc(doc(db, 'reviews', editingReview.id), fields);
+        haptics.success();
         onDone();
       } else {
         // Firestore queues this write in memory and sends it once back online —
@@ -139,6 +173,7 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
           createdAt: serverTimestamp(),
         });
         const newlyEarned = await checkForNewBadges(fields);
+        haptics.success();
         if (newlyEarned.length > 0) {
           // Show the unlock card first (only the first if several unlocked
           // at once) — onDone() is deferred until it's closed, since it
@@ -150,7 +185,7 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
         }
       }
     } catch (e) {
-      Alert.alert('Could not save', e.message ?? 'Something went wrong.');
+      toast.error('Could not save', e.message ?? 'Something went wrong.');
     } finally {
       setBusy(false);
     }
@@ -270,7 +305,7 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
       </View>
 
       <TextInput
-        placeholder="Caption"
+        placeholder="Caption (optional)"
         placeholderTextColor={colors.textMuted}
         value={reviewText}
         onChangeText={setReviewText}
@@ -386,13 +421,84 @@ export default function NewFlightReviewScreen({ user, onDone, editingReview, onB
 
       <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 16 }} />
 
-      <RatingBar label="Food" value={ratings.food} onChange={(v) => setRating('food', v)} />
-      <RatingBar label="Seat comfort" value={ratings.seatComfort} onChange={(v) => setRating('seatComfort', v)} />
-      <RatingBar label="Flight attendants" value={ratings.flightAttendants} onChange={(v) => setRating('flightAttendants', v)} />
-      <RatingBar label="Multimedia" value={ratings.multimedia} onChange={(v) => setRating('multimedia', v)} />
+      {RATING_CATEGORIES.map((cat) => (
+        <RatingBar
+          key={cat.key}
+          label={cat.label}
+          emoji={cat.emoji}
+          description={cat.description}
+          value={ratings[cat.key]}
+          onChange={(v) => setRating(cat.key, v)}
+          allowNA={cat.allowNA}
+          isNA={naFlags[cat.key]}
+          onToggleNA={cat.allowNA ? () => toggleNA(cat.key) : undefined}
+        />
+      ))}
+
+      {/* Bag allowance isn't a drag-bar like the categories above — see
+          utils/ratingMeta.js for why (discrete tiers fit it better than a
+          0-5 continuum). Header row matches RatingBar's layout for visual
+          consistency; the picker below reuses the same 4-way chip pattern
+          as the wifi-quality/cabin-class pickers elsewhere on this form. */}
+      <View style={{ marginBottom: 20 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <Pressable
+            onPress={() => toast.info(`${BAG_ALLOWANCE.emoji} ${BAG_ALLOWANCE.label}`, BAG_ALLOWANCE.description)}
+            hitSlop={8}
+          >
+            <Text style={{ fontSize: 20 }}>{BAG_ALLOWANCE.emoji}</Text>
+          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Pressable onPress={() => toggleNA('bagAllowance')} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons
+                name={naFlags.bagAllowance ? 'checkbox' : 'square-outline'}
+                size={16}
+                color={naFlags.bagAllowance ? colors.accentFill : colors.textMuted}
+              />
+              <Text style={{ fontSize: 11, color: colors.textMuted }}>N/A</Text>
+            </Pressable>
+            <Text style={{ fontSize: 14, fontWeight: '500', color: colors.accentText, minWidth: 60, textAlign: 'right' }}>
+              {naFlags.bagAllowance ? 'N/A' : bagAllowance}
+            </Text>
+          </View>
+        </View>
+
+        {naFlags.bagAllowance ? (
+          <View style={{ height: 32, justifyContent: 'center' }}>
+            <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.border, opacity: 0.4 }} />
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {BAG_ALLOWANCE_LEVELS.map((level) => (
+              <Pressable
+                key={level}
+                onPress={() => setBagAllowance(level)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  backgroundColor: bagAllowance === level ? colors.accentFill : colors.surface,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '500',
+                    color: bagAllowance === level ? colors.onAccentFill : colors.textSecondary,
+                    textAlign: 'center',
+                  }}
+                >
+                  {level}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </View>
 
       <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 16 }}>
-        Overall rating is the average of the four above, shown on your post.
+        Overall rating is the average of food, seat comfort, crew, and multimedia (skipping any marked N/A) — bag allowance is shown separately and doesn't count toward it.
       </Text>
 
       <Pressable

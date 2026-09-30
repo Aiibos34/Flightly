@@ -4,6 +4,7 @@ import { collection, query, where, onSnapshot } from '@firebase/firestore';
 import { db, firebaseReady } from '../firebase';
 import { useTheme } from '../theme';
 import ScreenHeader from '../components/ScreenHeader';
+import EmptyState from '../components/EmptyState';
 
 export default function FlightHistoryScreen({ user, profileUserId, onBack, onOpenReview }) {
   const { colors } = useTheme();
@@ -30,11 +31,11 @@ export default function FlightHistoryScreen({ user, profileUserId, onBack, onOpe
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader title="Flight history" onBack={onBack} />
       {reviews.length === 0 ? (
-        <View style={{ padding: 16 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-            {targetUserId === user.uid ? 'Every flight you log will show up here.' : 'No flights logged yet.'}
-          </Text>
-        </View>
+        <EmptyState
+          icon="airplane-outline"
+          title="No flights yet"
+          subtitle={targetUserId === user.uid ? 'Every flight you log will show up here.' : undefined}
+        />
       ) : (
         <FlatList
           data={reviews}
